@@ -10,7 +10,7 @@ import cv2
 import numpy as np
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QFileDialog, QLabel, QPushButton, QWidget,
-    QVBoxLayout, QHBoxLayout, QListWidget, QMessageBox, QInputDialog, QListWidgetItem
+    QVBoxLayout, QHBoxLayout, QListWidget, QMessageBox, QInputDialog, QListWidgetItem, QCheckBox
 )
 from PyQt5.QtGui import QPixmap, QImage, QPainter, QColor, QPen
 from PyQt5.QtCore import Qt, QPoint
@@ -47,6 +47,8 @@ class LaneLabelTool(QMainWindow):
         self.json_file_label = QLabel("")  # 新增：用于显示json文件名
         self.json_file_label.setAlignment(Qt.AlignLeft)
         self.last_json_path = self.load_last_json_path()  # 初始化时从cache.json加载
+        self.select_all_checkbox = None  # 新增：全选复选框
+        self.selected_lane_indices = set()  # 新增：用于多选支持
         self.init_ui()
 
     def init_ui(self):
@@ -66,7 +68,13 @@ class LaneLabelTool(QMainWindow):
 
         # 右侧面板
         self.lane_list = QListWidget()
+        self.lane_list.setSelectionMode(QListWidget.SingleSelection)  # 保持单选模式
         self.lane_list.currentRowChanged.connect(self.select_lane)
+
+        self.select_all_checkbox = QCheckBox("全选")
+        self.select_all_checkbox.setChecked(True)
+        self.select_all_checkbox.stateChanged.connect(self.on_select_all_changed)
+
         add_lane_btn = QPushButton("添加车道线")
         add_lane_btn.clicked.connect(self.add_lane)
         del_lane_btn = QPushButton("删除车道线")
@@ -75,6 +83,10 @@ class LaneLabelTool(QMainWindow):
         undo_btn.clicked.connect(self.undo)
         redo_btn = QPushButton("重做")
         redo_btn.clicked.connect(self.redo)
+
+        # 新增：显示当前选中车道线像素点的按钮
+        show_points_btn = QPushButton("显示当前车道线像素点")
+        show_points_btn.clicked.connect(self.show_current_lane_points)
 
         # 布局
         top_layout = QHBoxLayout()
@@ -91,11 +103,13 @@ class LaneLabelTool(QMainWindow):
 
         right_layout = QVBoxLayout()
         right_layout.addWidget(QLabel("车道线列表"))
+        right_layout.addWidget(self.select_all_checkbox)  # 新增：全选复选框
         right_layout.addWidget(self.lane_list)
         right_layout.addWidget(add_lane_btn)
         right_layout.addWidget(del_lane_btn)
         right_layout.addWidget(undo_btn)
         right_layout.addWidget(redo_btn)
+        right_layout.addWidget(show_points_btn)  # 新增：显示像素点按钮
         right_layout.addStretch()
 
         main_layout = QHBoxLayout()
@@ -201,7 +215,6 @@ class LaneLabelTool(QMainWindow):
             self.image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             #self.image = cv2.resize(self.image, (CANVAS_SIZE[0], CANVAS_SIZE[1]))
 
-
     def update_lane_list(self):
         self.lane_list.clear()
         for idx, lane in enumerate(self.lane_points):
@@ -239,14 +252,15 @@ class LaneLabelTool(QMainWindow):
             y = int(event.pos().y())
             self.push_undo()
             self.lane_points[self.current_lane].append((x, y))
+            # sort points by y
+            self.lane_points[self.current_lane].sort(key=lambda x: x[1])
             self.update_canvas()
 
     def update_canvas(self):
         if self.image is None:
             return
         img = self.image.copy()
-        painter = QPainter()    
-        #qimg = QImage(img.data, CANVAS_SIZE[0], CANVAS_SIZE[1], img.strides[0], QImage.Format_RGB888)
+        painter = QPainter()
         qimg = QImage(img.data, TUSIMPLE_IMG_SIZE[0], TUSIMPLE_IMG_SIZE[1], img.strides[0], QImage.Format_RGB888)
         pixmap = QPixmap.fromImage(qimg)
         painter.begin(pixmap)
@@ -255,18 +269,22 @@ class LaneLabelTool(QMainWindow):
         if hasattr(self, "h_samples") and self.h_samples:
             pen = QPen(QColor(200, 200, 200), 1, Qt.DashLine)
             painter.setPen(pen)
-            #for y in self.h_samples:
             for i in range(len(self.h_samples)):
                 if i % 2 == 0:
                     y = self.h_samples[i]
-                    painter.drawLine(0, y, 1280, y)                    
-                    # 新增：在左侧显示y值
+                    painter.drawLine(0, y, 1280, y)
                     painter.setPen(QColor(80, 80, 80))
                     painter.drawText(5, y - 2, f"{y}")
-                    painter.setPen(pen)  # 恢复参考线颜色
+                    painter.setPen(pen)
 
         # 画车道线
-        for idx, lane in enumerate(self.lane_points):
+        if self.select_all_checkbox is not None and self.select_all_checkbox.isChecked():
+            lane_indices = range(len(self.lane_points))
+        else:
+            lane_indices = [self.current_lane] if 0 <= self.current_lane < len(self.lane_points) else []
+
+        for idx in lane_indices:
+            lane = self.lane_points[idx]
             color = LANE_COLORS[idx % len(LANE_COLORS)]
             pen = QPen(color, 3)
             painter.setPen(pen)
@@ -297,6 +315,24 @@ class LaneLabelTool(QMainWindow):
         self.lane_points = json.loads(self.redo_stack.pop())
         self.update_lane_list()
         self.update_canvas()
+
+    def on_select_all_changed(self, state):
+        if state == Qt.Checked:
+            self.lane_list.setEnabled(False)
+        else:
+            self.lane_list.setEnabled(True)
+        self.update_canvas()
+
+    def show_current_lane_points(self):
+        if 0 <= self.current_lane < len(self.lane_points):
+            points = self.lane_points[self.current_lane]
+            if not points:
+                msg = "当前车道线没有像素点。"
+            else:
+                msg = "\n".join([f"({x}, {y})" for x, y in points])
+        else:
+            msg = "未选中任何车道线。"
+        QMessageBox.information(self, "当前车道线像素点", msg)
 
     def closeEvent(self, event):
         reply = QMessageBox.question(self, '退出', '确定要退出吗？未保存的更改将丢失。',
