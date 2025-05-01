@@ -42,6 +42,9 @@ class LaneLabelTool(QMainWindow):
         self.h_samples = []
         self.lane_points = []  # [[(x1, y1), (x2, y2), ...], ...]
         self.path_label = QLabel("")  # 新增：用于显示路径和分辨率
+        self.json_file_label = QLabel("")  # 新增：用于显示json文件名
+        self.json_file_label.setAlignment(Qt.AlignLeft)
+        self.last_json_path = self.load_last_json_path()  # 初始化时从cache.json加载
         self.init_ui()
 
     def init_ui(self):
@@ -78,9 +81,10 @@ class LaneLabelTool(QMainWindow):
         top_layout.addWidget(prev_btn)
         top_layout.addWidget(next_btn)
 
-        # 新增：按钮下方显示路径和分辨率
+        # 新增：按钮下方显示json文件名、路径和分辨率
         path_layout = QVBoxLayout()
         path_layout.addLayout(top_layout)
+        path_layout.addWidget(self.json_file_label)  # 新增：添加json文件名label
         path_layout.addWidget(self.path_label)
 
         right_layout = QVBoxLayout()
@@ -106,15 +110,38 @@ class LaneLabelTool(QMainWindow):
         layout.addLayout(main_layout)
         self.setCentralWidget(central_widget)
 
+    def load_last_json_path(self):
+        cache_file = "cache.json"
+        if os.path.exists(cache_file):
+            try:
+                with open(cache_file, "r") as f:
+                    cache = json.load(f)
+                    return cache.get("last_json_path", "")
+            except Exception:
+                return ""
+        return ""
+
+    def save_last_json_path(self, path):
+        cache = {"last_json_path": path}
+        with open("cache.json", "w") as f:
+            json.dump(cache, f)
+
     def open_annotation(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "选择TuSimple标注文件", "", "JSON Files (*.json)")
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "选择TuSimple标注文件", self.last_json_path, "JSON Files (*.json)"
+        )
         if not file_path:
             return
+        self.last_json_path = os.path.dirname(file_path)
+        self.save_last_json_path(self.last_json_path)  # 保存到cache.json
+        self.annotation_data = []
         with open(file_path, "r") as f:
             lines = f.readlines()
             for line in lines:
                 self.annotation_data.append(json.loads(line))
         self.current_index = 0
+        # 新增：显示json文件名
+        self.json_file_label.setText(f"JSON文件: {os.path.basename(file_path)}")
         self.load_image_and_lanes()
 
     def save_annotation(self):
@@ -123,6 +150,8 @@ class LaneLabelTool(QMainWindow):
         file_path, _ = QFileDialog.getSaveFileName(self, "保存标注文件", "", "JSON Files (*.json)")
         if not file_path:
             return
+        self.last_json_path = os.path.dirname(file_path)
+        self.save_last_json_path(self.last_json_path)  # 保存到cache.json
         with open(file_path, "w") as f:
             json.dump(self.annotation_data, f, indent=2)
         QMessageBox.information(self, "保存成功", "标注已保存！")
@@ -147,8 +176,6 @@ class LaneLabelTool(QMainWindow):
             for x, y in zip(lane, self.h_samples):
                 if x >= 0:
                     points.append((x, y))
-                    #points.append((int(round(x * self.img_w_scale)), 
-                    #               int(round(y * self.img_h_scale))))
             self.lane_points.append(points)
         self.current_lane = 0
         self.update_lane_list()
@@ -157,9 +184,9 @@ class LaneLabelTool(QMainWindow):
         # 更新路径和分辨率显示
         if self.image is not None:
             h, w = self.image.shape[:2]
-            self.path_label.setText(f"{self.image_path}    {w}x{h}")
+            self.path_label.setText(f"Image: {self.image_path}    {w}x{h}")
         else:
-            self.path_label.setText(f"{self.image_path}    (未加载)")
+            self.path_label.setText(f"Image: {self.image_path}    (未加载)")
 
     def load_image(self):
         img = cv2.imread(self.image_path)
@@ -217,6 +244,22 @@ class LaneLabelTool(QMainWindow):
         qimg = QImage(img.data, TUSIMPLE_IMG_SIZE[0], TUSIMPLE_IMG_SIZE[1], img.strides[0], QImage.Format_RGB888)
         pixmap = QPixmap.fromImage(qimg)
         painter.begin(pixmap)
+
+        # 只画水平参考线
+        if hasattr(self, "h_samples") and self.h_samples:
+            pen = QPen(QColor(200, 200, 200), 1, Qt.DashLine)
+            painter.setPen(pen)
+            #for y in self.h_samples:
+            for i in range(len(self.h_samples)):
+                if i % 2 == 0:
+                    y = self.h_samples[i]
+                    painter.drawLine(0, y, 1280, y)                    
+                    # 新增：在左侧显示y值
+                    painter.setPen(QColor(80, 80, 80))
+                    painter.drawText(5, y - 2, f"{y}")
+                    painter.setPen(pen)  # 恢复参考线颜色
+
+        # 画车道线
         for idx, lane in enumerate(self.lane_points):
             color = LANE_COLORS[idx % len(LANE_COLORS)]
             pen = QPen(color, 3)
