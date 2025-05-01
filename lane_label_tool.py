@@ -49,6 +49,7 @@ class LaneLabelTool(QMainWindow):
         self.last_json_path = self.load_last_json_path()  # 初始化时从cache.json加载
         self.select_all_checkbox = None  # 新增：全选复选框
         self.selected_lane_indices = set()  # 新增：用于多选支持
+        self.last_saved_lane_points = None  # 新增：用于保存上次保存的lane_points快照
         self.init_ui()
 
     def init_ui(self):
@@ -84,9 +85,12 @@ class LaneLabelTool(QMainWindow):
         redo_btn = QPushButton("重做")
         redo_btn.clicked.connect(self.redo)
 
-        # 新增：显示当前选中车道线像素点的按钮
         show_points_btn = QPushButton("显示当前车道线像素点")
         show_points_btn.clicked.connect(self.show_current_lane_points)
+
+        # 新增：整理当前车道线按钮
+        organize_btn = QPushButton("整理当前车道线(线性插值)")
+        organize_btn.clicked.connect(self.organize_current_lane)
 
         # 布局
         top_layout = QHBoxLayout()
@@ -103,13 +107,14 @@ class LaneLabelTool(QMainWindow):
 
         right_layout = QVBoxLayout()
         right_layout.addWidget(QLabel("车道线列表"))
-        right_layout.addWidget(self.select_all_checkbox)  # 新增：全选复选框
+        right_layout.addWidget(self.select_all_checkbox)
         right_layout.addWidget(self.lane_list)
         right_layout.addWidget(add_lane_btn)
         right_layout.addWidget(del_lane_btn)
         right_layout.addWidget(undo_btn)
         right_layout.addWidget(redo_btn)
-        right_layout.addWidget(show_points_btn)  # 新增：显示像素点按钮
+        right_layout.addWidget(show_points_btn)
+        right_layout.addWidget(organize_btn)  # 新增：整理按钮
         right_layout.addStretch()
 
         main_layout = QHBoxLayout()
@@ -159,28 +164,124 @@ class LaneLabelTool(QMainWindow):
         # 新增：显示json文件名
         self.json_file_label.setText(f"JSON文件: {os.path.basename(file_path)}")
         self.load_image_and_lanes()
+        self.last_saved_lane_points = json.dumps(self.lane_points)  # 新增：记录初始快照
 
     def save_annotation(self):
         if not self.annotation_data:
             return
+
         file_path, _ = QFileDialog.getSaveFileName(self, "保存标注文件", "", "JSON Files (*.json)")
         if not file_path:
             return
+        
+        # 新增：保存前自动检查并插值
+        self.auto_interpolate_all_lanes_to_h_samples()
+        self.save_current_lane_points_to_annotation()
+
         self.last_json_path = os.path.dirname(file_path)
         self.save_last_json_path(self.last_json_path)  # 保存到cache.json
         with open(file_path, "w") as f:
-            json.dump(self.annotation_data, f, indent=2)
+            for ann in self.annotation_data:
+                json.dump(ann, f)
+                f.write("\n")
         QMessageBox.information(self, "保存成功", "标注已保存！")
+        self.last_saved_lane_points = json.dumps(self.lane_points)  # 新增：保存后更新快照
+
+    def auto_interpolate_all_lanes_to_h_samples(self):
+        """
+        检查当前图片的所有lane_points是否都是h_samples上的点，如果不是则自动做线性插值。
+        """
+        if not self.h_samples or not self.lane_points:
+            return
+        new_lane_points = []
+        for lane in self.lane_points:
+            if not lane or len(lane) < 2:
+                new_lane_points.append(lane)
+                continue
+            # 检查是否所有点的y都在h_samples上
+            lane_ys = [pt[1] for pt in lane]
+            if all(y in self.h_samples for y in lane_ys) and len(lane) == len(self.h_samples):
+                new_lane_points.append(lane)
+                continue
+            # 需要插值
+            points = sorted(lane, key=lambda x: x[1])
+            xs = [pt[0] for pt in points]
+            ys = [pt[1] for pt in points]
+            min_y, max_y = min(ys), max(ys)
+            interp_h_samples = [y for y in self.h_samples if min_y <= y <= max_y]
+            if len(interp_h_samples) == 0:
+                #new_lane_points.append([])
+                print(f"车道线 {lane_idx} 没有h_samples上的点, 删除车道线")
+                continue
+            interp_xs = np.interp(interp_h_samples, ys, xs)
+            new_points = [(int(round(x)), int(y)) for x, y in zip(interp_xs, interp_h_samples)]
+            new_lane_points.append(new_points)
+        self.lane_points = new_lane_points
+        self.update_lane_list()
+        self.update_canvas()
 
     def prev_image(self):
         if self.current_index > 0:
+            if not self.check_unsaved_changes():
+                return
             self.current_index -= 1
             self.load_image_and_lanes()
+            self.last_saved_lane_points = json.dumps(self.lane_points)  # 新增：切换后更新快照
 
     def next_image(self):
         if self.current_index < len(self.annotation_data) - 1:
+            if not self.check_unsaved_changes():
+                return
             self.current_index += 1
             self.load_image_and_lanes()
+            self.last_saved_lane_points = json.dumps(self.lane_points)  # 新增：切换后更新快照
+
+    def check_unsaved_changes(self):
+        """
+        检查当前车道线像素点是否有未保存的更改，有则弹窗提醒用户是否保存。
+        返回True表示可以切换，False表示用户取消切换。
+        """
+        current = json.dumps(self.lane_points)
+        if self.last_saved_lane_points is not None and current != self.last_saved_lane_points:
+            reply = QMessageBox.question(
+                self, "未保存的更改",
+                "当前图片的车道线有未保存的更改，是否保存？",
+                QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
+                QMessageBox.Yes
+            )
+            if reply == QMessageBox.Yes:
+                # 保存到annotation_data
+                self.save_annotation()
+                return True
+            elif reply == QMessageBox.No:
+                return True
+            else:
+                return False
+        return True
+
+    def save_current_lane_points_to_annotation(self):
+        """
+        将当前self.lane_points同步回self.annotation_data[self.current_index]['lanes']。
+        """
+        if not self.annotation_data:
+            return
+        # 只保存x坐标，y坐标由h_samples决定
+        lanes = []
+        for lane in self.lane_points:
+            lane_xs = []
+            lane_dict = {}
+            for y in self.h_samples:
+                # 查找与y匹配的点
+                found = False
+                for pt in lane:
+                    if pt[1] == y:
+                        lane_xs.append(pt[0])
+                        found = True
+                        break
+                if not found:
+                    lane_xs.append(-2)  # 按tusimple格式，未标注点为-2
+            lanes.append(lane_xs)
+        self.annotation_data[self.current_index]['lanes'] = lanes
 
     def load_image_and_lanes(self):
         ann = self.annotation_data[self.current_index]
@@ -254,6 +355,7 @@ class LaneLabelTool(QMainWindow):
             self.lane_points[self.current_lane].append((x, y))
             # sort points by y
             self.lane_points[self.current_lane].sort(key=lambda x: x[1])
+            self.update_lane_list()  # 新增：及时更新车道线列表
             self.update_canvas()
 
     def update_canvas(self):
@@ -292,7 +394,7 @@ class LaneLabelTool(QMainWindow):
                 painter.drawLine(QPoint(*lane[i-1]), QPoint(*lane[i]))
             for pt in lane:
                 painter.setBrush(color)
-                painter.drawEllipse(QPoint(*pt), 5, 5)
+                painter.drawEllipse(QPoint(*pt), 2, 2)  # 修改：直径为3（半径为1）
         painter.end()
         self.canvas.setPixmap(pixmap)
 
@@ -305,7 +407,7 @@ class LaneLabelTool(QMainWindow):
             return
         self.redo_stack.append(json.dumps(self.lane_points))
         self.lane_points = json.loads(self.undo_stack.pop())
-        self.update_lane_list()
+        self.update_lane_list()  # 新增：及时更新车道线列表
         self.update_canvas()
 
     def redo(self):
@@ -313,7 +415,7 @@ class LaneLabelTool(QMainWindow):
             return
         self.undo_stack.append(json.dumps(self.lane_points))
         self.lane_points = json.loads(self.redo_stack.pop())
-        self.update_lane_list()
+        self.update_lane_list()  # 新增：及时更新车道线列表
         self.update_canvas()
 
     def on_select_all_changed(self, state):
@@ -333,6 +435,41 @@ class LaneLabelTool(QMainWindow):
         else:
             msg = "未选中任何车道线。"
         QMessageBox.information(self, "当前车道线像素点", msg)
+
+    def organize_current_lane(self):
+        """
+        对当前选中车道线的像素点进行线性插值，生成tusimple特征点（h_samples对应的x），
+        并用插值结果替换原有像素点列表。
+        """
+        if not (0 <= self.current_lane < len(self.lane_points)):
+            QMessageBox.warning(self, "警告", "未选中任何车道线。")
+            return
+        if not self.h_samples or len(self.lane_points[self.current_lane]) < 2:
+            QMessageBox.warning(self, "警告", "当前车道线点数不足或未加载h_samples。")
+            return
+
+        # 取出并排序当前车道线的点
+        points = sorted(self.lane_points[self.current_lane], key=lambda x: x[1])
+        xs = [pt[0] for pt in points]
+        ys = [pt[1] for pt in points]
+
+        # 只对h_samples范围内插值
+        min_y, max_y = min(ys), max(ys)
+        interp_h_samples = [y for y in self.h_samples if min_y <= y <= max_y]
+        if len(interp_h_samples) == 0:
+            QMessageBox.warning(self, "警告", "h_samples与当前车道线像素点无交集。")
+            return
+
+        # 线性插值
+        interp_xs = np.interp(interp_h_samples, ys, xs)
+        new_points = [(int(round(x)), int(y)) for x, y in zip(interp_xs, interp_h_samples)]
+
+        # 替换原有点
+        self.push_undo()
+        self.lane_points[self.current_lane] = new_points
+        self.update_lane_list()  # 新增：及时更新车道线列表
+        self.update_canvas()
+        QMessageBox.information(self, "整理完成", f"已用线性插值生成{len(new_points)}个特征点。")
 
     def closeEvent(self, event):
         reply = QMessageBox.question(self, '退出', '确定要退出吗？未保存的更改将丢失。',
