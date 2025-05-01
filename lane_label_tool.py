@@ -10,7 +10,7 @@ import cv2
 import numpy as np
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QFileDialog, QLabel, QPushButton, QWidget,
-    QVBoxLayout, QHBoxLayout, QListWidget, QMessageBox, QInputDialog
+    QVBoxLayout, QHBoxLayout, QListWidget, QMessageBox, QInputDialog, QListWidgetItem
 )
 from PyQt5.QtGui import QPixmap, QImage, QPainter, QColor, QPen
 from PyQt5.QtCore import Qt, QPoint
@@ -19,6 +19,8 @@ LANE_COLORS = [
     QColor(255, 0, 0), QColor(0, 255, 0), QColor(0, 0, 255),
     QColor(255, 255, 0), QColor(255, 0, 255), QColor(0, 255, 255)
 ]
+
+LANE_COLOR_NAMES = ["red", "green", "blue", "yellow", "purple", "cyan"]
 
 TUSIMPLE_IMG_SIZE = (1280, 720)
 CANVAS_SIZE = (960, 540)
@@ -31,10 +33,10 @@ class LaneLabelTool(QMainWindow):
         #self.setMinimumSize(1600, 900)
         self.resize(1600, 900)
         self.annotation_data = []
-        self.current_index = 0
-        self.current_lane = 0
-        self.undo_stack = []
-        self.redo_stack = []
+        self.current_index = 0  # 当前标注的图片索引
+        self.current_lane = 0  # 当前标注的车道线索引
+        self.undo_stack = []  # 撤销栈
+        self.redo_stack = []  # 重做栈
         self.image = None
         self.img_h_scale = CANVAS_SIZE[1] / TUSIMPLE_IMG_SIZE[1]
         self.img_w_scale = CANVAS_SIZE[0] / TUSIMPLE_IMG_SIZE[0]
@@ -203,7 +205,11 @@ class LaneLabelTool(QMainWindow):
     def update_lane_list(self):
         self.lane_list.clear()
         for idx, lane in enumerate(self.lane_points):
-            self.lane_list.addItem(f"车道线 {idx+1} ({len(lane)}点)")
+            item_text = f"车道线 {idx+1} ({len(lane)}点) {LANE_COLOR_NAMES[idx % len(LANE_COLORS)]}"
+            item = QListWidgetItem(item_text)
+            color = LANE_COLORS[idx % len(LANE_COLORS)]
+            item.setForeground(color)
+            self.lane_list.addItem(item)
         self.lane_list.setCurrentRow(self.current_lane)
 
     def select_lane(self, idx):
