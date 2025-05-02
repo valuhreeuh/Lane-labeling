@@ -6,6 +6,7 @@ os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = os.path.dirname(PyQt5.QtCore.__file_
 
 import sys
 import json
+import copy
 import cv2
 import numpy as np
 from PyQt5.QtWidgets import (
@@ -156,7 +157,6 @@ class LaneLabelTool(QMainWindow):
         self.select_all_checkbox = None  # 新增：全选复选框
         self.selected_lane_indices = set()  # 新增：用于多选支持
         self.last_saved_lane_points = None  # 新增：用于保存上次保存的lane_points快照
-        self.dataset_path = "datasets/TUSimple/tusimple"  # 新增：默认数据集路径
         self.project_id_label = QLabel("")  # 新增：用于显示project id
         self.project_id_label.setAlignment(Qt.AlignLeft)
         self.init_ui()
@@ -269,14 +269,11 @@ class LaneLabelTool(QMainWindow):
             "last_json_path": "",      # 上次打开的目录
             "json_file_path": None,    # 上次打开的文件完整路径
             "current_index": 0,        # 上次标注的图片索引
-            "dataset_path": "datasets/TUSimple/tusimple"  # 新增：默认数据集路径
         }
         if os.path.exists(cache_file):
             try:
                 with open(cache_file, "r") as f:
                     cache = json.load(f)
-                    # 加载数据集路径
-                    self.dataset_path = cache.get("dataset_path", default_cache["dataset_path"])
                     return cache
             except Exception:
                 return default_cache
@@ -288,10 +285,10 @@ class LaneLabelTool(QMainWindow):
             "last_json_path": self.last_json_path,
             "json_file_path": self.json_file_path,
             "current_index": self.current_index,
-            "dataset_path": self.dataset_path  # 新增：保存数据集路径
         }
         with open("cache.json", "w") as f:
             json.dump(cache, f)
+        self.cache = cache
 
     def open_annotation(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -301,6 +298,7 @@ class LaneLabelTool(QMainWindow):
         if not file_path:
             return
         self._open_annotation(file_path)
+        self.save_cache()
 
     def _open_annotation(self, file_path):
         self.last_json_path = os.path.dirname(file_path)
@@ -318,16 +316,18 @@ class LaneLabelTool(QMainWindow):
                 self.current_index = saved_index
             else:
                 self.current_index = 0
+                self.save_cache()
         else:
             self.current_index = 0
+            self.save_cache()
             
         self.project_id_label.setText(
             self.lang_manager.get_text("label_project_id", id=self.config['project_id']))
         self.json_file_label.setText(
             self.lang_manager.get_text("label_json_file", filename=os.path.basename(file_path)))
         self.load_image_and_lanes()
-        self.last_saved_lane_points = json.dumps(self.lane_points)
-        self.save_cache()  # 保存新的缓存信息
+        #self.last_saved_lane_points = json.dumps(self.lane_points)
+        #self.save_cache()  # 保存新的缓存信息
 
     def save_annotation(self):
         if not self.annotation_data:
@@ -365,7 +365,8 @@ class LaneLabelTool(QMainWindow):
             self.lang_manager.get_text("dialog_success"), 
             self.lang_manager.get_text("msg_save_success")
         )
-        self.last_saved_lane_points = json.dumps(self.lane_points)  # 新增：保存后更新快照
+        #self.last_saved_lane_points = json.dumps(self.lane_points)  # 新增：保存后更新快照
+        self.last_saved_lane_points = copy.deepcopy(self.lane_points)
 
     def auto_interpolate_all_lanes_to_h_samples(self):
         """
@@ -405,25 +406,24 @@ class LaneLabelTool(QMainWindow):
             if not self.check_unsaved_changes():
                 return
             self.current_index -= 1
-            self.load_image_and_lanes()
-            self.last_saved_lane_points = json.dumps(self.lane_points)
             self.save_cache()  # 保存当前索引
+            self.load_image_and_lanes()
 
     def next_image(self):
         if self.current_index < len(self.annotation_data) - 1:
+            #print(f"next_image: {self.current_index}")
             if not self.check_unsaved_changes():
                 return
             self.current_index += 1
-            self.load_image_and_lanes()
-            self.last_saved_lane_points = json.dumps(self.lane_points)
             self.save_cache()  # 保存当前索引
+            self.load_image_and_lanes()
 
     def check_unsaved_changes(self):
         """
         检查当前车道线像素点是否有未保存的更改，有则弹窗提醒用户是否保存。
         返回True表示可以切换，False表示用户取消切换。
         """
-        current = json.dumps(self.lane_points)
+        current = self.lane_points
         if self.last_saved_lane_points is not None and current != self.last_saved_lane_points:
             reply = QMessageBox.question(
                 self, self.lang_manager.get_text("dialog_unsaved_changes"),
@@ -431,6 +431,7 @@ class LaneLabelTool(QMainWindow):
                 QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
                 QMessageBox.Yes
             )
+            #print(f"check_unsaved_changes, current_index: {self.current_index}, reply: {reply}")
             if reply == QMessageBox.Yes:
                 # 保存到annotation_data
                 #self.save_annotation()
@@ -482,6 +483,7 @@ class LaneLabelTool(QMainWindow):
         self.update_lane_list()
         self.load_image()
         self.update_canvas()
+        self.last_saved_lane_points = copy.deepcopy(self.lane_points)
         # 更新路径和分辨率显示
         if self.image is not None:
             h, w = self.image.shape[:2]
@@ -688,11 +690,16 @@ class LaneLabelTool(QMainWindow):
                 count=len(new_points)))
 
     def save_copy(self):
-        copy_filename = self._save_copy()
+        copy_filepath = self._save_copy()
+        # reopen the copy file
+        self.json_file_path = copy_filepath
+        self._open_annotation(copy_filepath)
+        self.save_cache()
+        #print(f"save_copy, current_index: {self.current_index}")        
         QMessageBox.information(self, 
             self.lang_manager.get_text("dialog_success"),
             self.lang_manager.get_text("msg_save_copy_success", 
-                filename=copy_filename))
+                filename=copy_filepath))
         
 
     def _save_copy(self):
@@ -725,21 +732,24 @@ class LaneLabelTool(QMainWindow):
             copy_filename = f"{current_json}_{project_id}_tmp.json"
         copy_filepath = os.path.join(self.last_json_path, copy_filename)
 
+        #print(f"_save_copy, current_index: {self.current_index}")
         # 新增：保存前自动检查并插值
         self.auto_interpolate_all_lanes_to_h_samples()
         self.save_current_lane_points_to_annotation()
 
+        #print(f"_save_copy, current_index: {self.current_index}")
         # 保存副本
         with open(copy_filepath, "w") as f:
             for ann in self.annotation_data:
                 json.dump(ann, f)
                 f.write("\n")
-        
-        self.last_saved_lane_points = json.dumps(self.lane_points)  # 更新快照
+        #print("save copy done.")
+        #self.last_saved_lane_points = json.dumps(self.lane_points)  # 更新快照
+        self.last_saved_lane_points = copy.deepcopy(self.lane_points)
         # 更新json_file_path
-        self.json_file_path = copy_filepath
-        self._open_annotation(copy_filepath)
-        return copy_filename
+
+        #self.save_cache()
+        return copy_filepath
 
     def closeEvent(self, event):
         reply = QMessageBox.question(
