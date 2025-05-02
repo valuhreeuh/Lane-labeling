@@ -12,9 +12,9 @@ import numpy as np
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QFileDialog, QLabel, QPushButton, QWidget,
     QVBoxLayout, QHBoxLayout, QListWidget, QMessageBox, QInputDialog, QListWidgetItem, QCheckBox,
-    QDialog, QFormLayout, QLineEdit, QDialogButtonBox, QComboBox  # 新增 QComboBox
+    QDialog, QFormLayout, QLineEdit, QDialogButtonBox, QComboBox, QShortcut  # 新增 QComboBox 和 QShortcut
 )
-from PyQt5.QtGui import QPixmap, QImage, QPainter, QColor, QPen
+from PyQt5.QtGui import QPixmap, QImage, QPainter, QColor, QPen, QKeySequence
 from PyQt5.QtCore import Qt, QPoint
 
 LANE_COLORS = [
@@ -261,6 +261,12 @@ class LaneLabelTool(QMainWindow):
         layout.addLayout(path_layout)  # 用 path_layout 替换 top_layout
         layout.addLayout(main_layout)
         self.setCentralWidget(central_widget)
+
+        # 添加快捷键：撤销 Ctrl+Z，重做 Ctrl+Y
+        undo_shortcut = QShortcut(QKeySequence("Ctrl+Z"), self)
+        undo_shortcut.activated.connect(self.undo)
+        redo_shortcut = QShortcut(QKeySequence("Ctrl+R"), self)
+        redo_shortcut.activated.connect(self.redo)
 
     def load_cache(self):
         """加载缓存信息，包括上次标注的文件路径、文件名和图片索引"""
