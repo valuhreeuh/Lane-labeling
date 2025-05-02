@@ -46,7 +46,9 @@ class LaneLabelTool(QMainWindow):
         self.path_label = QLabel("")  # 新增：用于显示路径和分辨率
         self.json_file_label = QLabel("")  # 新增：用于显示json文件名
         self.json_file_label.setAlignment(Qt.AlignLeft)
-        self.last_json_path = self.load_last_json_path()  # 初始化时从cache.json加载
+        self.json_file_path = None
+        self.cache = self.load_cache()  # 修改：加载完整的缓存信息
+        self.last_json_path = self.cache.get("last_json_path", "")
         self.select_all_checkbox = None  # 新增：全选复选框
         self.selected_lane_indices = set()  # 新增：用于多选支持
         self.last_saved_lane_points = None  # 新增：用于保存上次保存的lane_points快照
@@ -58,6 +60,9 @@ class LaneLabelTool(QMainWindow):
         open_btn.clicked.connect(self.open_annotation)
         save_btn = QPushButton("保存标注")
         save_btn.clicked.connect(self.save_annotation)
+        # 新增：保存副本按钮
+        save_copy_btn = QPushButton("保存副本")
+        save_copy_btn.clicked.connect(self.save_copy)
         prev_btn = QPushButton("上一张")
         prev_btn.clicked.connect(self.prev_image)
         next_btn = QPushButton("下一张")
@@ -96,6 +101,7 @@ class LaneLabelTool(QMainWindow):
         top_layout = QHBoxLayout()
         top_layout.addWidget(open_btn)
         top_layout.addWidget(save_btn)
+        top_layout.addWidget(save_copy_btn)  # 新增：添加保存副本按钮
         top_layout.addWidget(prev_btn)
         top_layout.addWidget(next_btn)
 
@@ -131,19 +137,29 @@ class LaneLabelTool(QMainWindow):
         layout.addLayout(main_layout)
         self.setCentralWidget(central_widget)
 
-    def load_last_json_path(self):
+    def load_cache(self):
+        """加载缓存信息，包括上次标注的文件路径、文件名和图片索引"""
         cache_file = "cache.json"
+        default_cache = {
+            "last_json_path": "",      # 上次打开的目录
+            "json_file_path": None,    # 上次打开的文件完整路径
+            "current_index": 0         # 上次标注的图片索引
+        }
         if os.path.exists(cache_file):
             try:
                 with open(cache_file, "r") as f:
-                    cache = json.load(f)
-                    return cache.get("last_json_path", "")
+                    return json.load(f)
             except Exception:
-                return ""
-        return ""
+                return default_cache
+        return default_cache
 
-    def save_last_json_path(self, path):
-        cache = {"last_json_path": path}
+    def save_cache(self):
+        """保存缓存信息"""
+        cache = {
+            "last_json_path": self.last_json_path,
+            "json_file_path": self.json_file_path,
+            "current_index": self.current_index
+        }
         with open("cache.json", "w") as f:
             json.dump(cache, f)
 
@@ -153,18 +169,31 @@ class LaneLabelTool(QMainWindow):
         )
         if not file_path:
             return
+        self._open_annotation(file_path)
+
+    def _open_annotation(self, file_path):
         self.last_json_path = os.path.dirname(file_path)
-        self.save_last_json_path(self.last_json_path)  # 保存到cache.json
+        self.json_file_path = file_path
         self.annotation_data = []
         with open(file_path, "r") as f:
             lines = f.readlines()
             for line in lines:
                 self.annotation_data.append(json.loads(line))
-        self.current_index = 0
-        # 新增：显示json文件名
+        
+        # 如果是打开上次的文件，恢复上次的索引位置
+        if file_path == self.cache.get("json_file_path"):
+            saved_index = self.cache.get("current_index", 0)
+            if 0 <= saved_index < len(self.annotation_data):
+                self.current_index = saved_index
+            else:
+                self.current_index = 0
+        else:
+            self.current_index = 0
+            
         self.json_file_label.setText(f"JSON文件: {os.path.basename(file_path)}")
         self.load_image_and_lanes()
-        self.last_saved_lane_points = json.dumps(self.lane_points)  # 新增：记录初始快照
+        self.last_saved_lane_points = json.dumps(self.lane_points)
+        self.save_cache()  # 保存新的缓存信息
 
     def save_annotation(self):
         if not self.annotation_data:
@@ -179,7 +208,7 @@ class LaneLabelTool(QMainWindow):
         self.save_current_lane_points_to_annotation()
 
         self.last_json_path = os.path.dirname(file_path)
-        self.save_last_json_path(self.last_json_path)  # 保存到cache.json
+        self.save_cache()  # 退出前保存缓存
         with open(file_path, "w") as f:
             for ann in self.annotation_data:
                 json.dump(ann, f)
@@ -226,7 +255,8 @@ class LaneLabelTool(QMainWindow):
                 return
             self.current_index -= 1
             self.load_image_and_lanes()
-            self.last_saved_lane_points = json.dumps(self.lane_points)  # 新增：切换后更新快照
+            self.last_saved_lane_points = json.dumps(self.lane_points)
+            self.save_cache()  # 保存当前索引
 
     def next_image(self):
         if self.current_index < len(self.annotation_data) - 1:
@@ -234,7 +264,8 @@ class LaneLabelTool(QMainWindow):
                 return
             self.current_index += 1
             self.load_image_and_lanes()
-            self.last_saved_lane_points = json.dumps(self.lane_points)  # 新增：切换后更新快照
+            self.last_saved_lane_points = json.dumps(self.lane_points)
+            self.save_cache()  # 保存当前索引
 
     def check_unsaved_changes(self):
         """
@@ -301,9 +332,9 @@ class LaneLabelTool(QMainWindow):
         # 更新路径和分辨率显示
         if self.image is not None:
             h, w = self.image.shape[:2]
-            self.path_label.setText(f"Image: {self.image_path}    {w}x{h}")
+            self.path_label.setText(f"Image: #{self.current_index} | {self.image_path}    {w}x{h}")
         else:
-            self.path_label.setText(f"Image: {self.image_path}    (未加载)")
+            self.path_label.setText(f"Image: #{self.current_index} | {self.image_path}    (未加载)")
 
     def load_image(self):
         img = cv2.imread(self.image_path)
@@ -471,10 +502,40 @@ class LaneLabelTool(QMainWindow):
         self.update_canvas()
         QMessageBox.information(self, "整理完成", f"已用线性插值生成{len(new_points)}个特征点。")
 
+    def save_copy(self):
+        """保存标注数据的副本，文件名为原文件名加上_tmp.json"""
+        if not self.annotation_data:
+            QMessageBox.warning(self, "警告", "没有标注数据可保存！")
+            return
+
+        # 获取当前json文件名
+        current_json = self.json_file_path
+
+        # 生成副本文件名
+        copy_filename = f"{current_json}_tmp.json"
+        copy_filepath = os.path.join(self.last_json_path, copy_filename)
+
+        # 新增：保存前自动检查并插值
+        self.auto_interpolate_all_lanes_to_h_samples()
+        self.save_current_lane_points_to_annotation()
+
+        # 保存副本
+        with open(copy_filepath, "w") as f:
+            for ann in self.annotation_data:
+                json.dump(ann, f)
+                f.write("\n")
+        
+        QMessageBox.information(self, "保存成功", f"副本已保存为：{copy_filename}")
+        self.last_saved_lane_points = json.dumps(self.lane_points)  # 更新快照
+        # 更新json_file_path
+        self.json_file_path = copy_filepath
+        self._open_annotation(copy_filepath)
+
     def closeEvent(self, event):
         reply = QMessageBox.question(self, '退出', '确定要退出吗？未保存的更改将丢失。',
-                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+                                   QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         if reply == QMessageBox.Yes:
+            self.save_cache()  # 退出前保存缓存
             event.accept()
         else:
             event.ignore()
