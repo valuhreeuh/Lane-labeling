@@ -331,6 +331,17 @@ class LaneLabelTool(QMainWindow):
         if not self.annotation_data:
             return
 
+        # Check if current lanes exceed max_lanes
+        if len(self.lane_points) > self.config["max_lanes"]:
+            QMessageBox.warning(
+                self,
+                self.lang_manager.get_text("dialog_warning"),
+                self.lang_manager.get_text("msg_too_many_lanes", 
+                    current=len(self.lane_points), 
+                    max=self.config["max_lanes"])
+            )
+            return
+
         file_path, _ = QFileDialog.getSaveFileName(
             self, self.lang_manager.get_text("dialog_save_file"), 
             "", "JSON Files (*.json)")
@@ -465,6 +476,7 @@ class LaneLabelTool(QMainWindow):
                     points.append((x, y))
             self.lane_points.append(points)
         self.current_lane = 0
+        self.select_all_checkbox.setChecked(True)
         self.update_lane_list()
         self.load_image()
         self.update_canvas()
@@ -486,6 +498,7 @@ class LaneLabelTool(QMainWindow):
                     path=self.image_path
                 )
             )
+        
 
     def load_image(self):
         img = cv2.imread(self.image_path)
@@ -680,6 +693,17 @@ class LaneLabelTool(QMainWindow):
         """保存标注数据的副本，文件名为原文件名加上_tmp.json"""
         if not self.annotation_data:
             QMessageBox.warning(self, "警告", "没有标注数据可保存！")
+            return
+
+        # Check if current lanes exceed max_lanes
+        if len(self.lane_points) > self.config["max_lanes"]:
+            QMessageBox.warning(
+                self,
+                self.lang_manager.get_text("dialog_warning"),
+                self.lang_manager.get_text("msg_too_many_lanes", 
+                    current=len(self.lane_points), 
+                    max=self.config["max_lanes"])
+            )
             return
 
         # 获取当前json文件名
