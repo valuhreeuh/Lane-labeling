@@ -165,7 +165,7 @@ class LaneLabelTool(QMainWindow):
         # 顶部按钮
         top_layout = QHBoxLayout()
         
-        # 左侧按钮组
+        # 顶部左侧按钮组
         left_buttons = QHBoxLayout()
         open_btn = QPushButton(self.lang_manager.get_text("btn_open"))
         open_btn.clicked.connect(self.open_annotation)
@@ -181,7 +181,7 @@ class LaneLabelTool(QMainWindow):
         left_buttons.addWidget(prev_btn)
         left_buttons.addWidget(next_btn)
         
-        # 右侧按钮组
+        # 顶部右侧按钮组
         right_buttons = QHBoxLayout()
         # 配置按钮
         config_btn = QPushButton(self.lang_manager.get_text("btn_settings"))  # 使用齿轮emoji作为图标
@@ -232,7 +232,9 @@ class LaneLabelTool(QMainWindow):
         organize_btn = QPushButton(self.lang_manager.get_text("btn_organize"))
         organize_btn.clicked.connect(self.organize_current_lane)
 
-        lane_list_label = QLabel(self.lang_manager.get_text("label_lane_list"))
+        
+        lane_list_label = QLabel(f"<b>{self.lang_manager.get_text('label_lane_list')}</b>")
+        lane_list_label.setTextFormat(Qt.RichText)  # 确保使用富文本格式
         right_layout.addWidget(lane_list_label)
         right_layout.addWidget(self.select_all_checkbox)
         right_layout.addWidget(self.lane_list)
@@ -240,8 +242,10 @@ class LaneLabelTool(QMainWindow):
         right_layout.addWidget(del_lane_btn)
         right_layout.addWidget(undo_btn)
         right_layout.addWidget(redo_btn)
-        right_layout.addWidget(show_points_btn)
+        # add gap here
+        # right_layout.addStretch()
         right_layout.addWidget(organize_btn)  # 新增：整理按钮
+        right_layout.addWidget(show_points_btn)
         right_layout.addStretch()
 
         main_layout = QHBoxLayout()
@@ -497,7 +501,6 @@ class LaneLabelTool(QMainWindow):
                 )
             )
         
-
     def load_image(self):
         img = cv2.imread(self.image_path)
         img_h, img_w = img.shape[:2]
@@ -507,7 +510,6 @@ class LaneLabelTool(QMainWindow):
             self.image = np.zeros((TUSIMPLE_IMG_SIZE[1], TUSIMPLE_IMG_SIZE[0], 3), dtype=np.uint8)
         else:
             self.image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            #self.image = cv2.resize(self.image, (CANVAS_SIZE[0], CANVAS_SIZE[1]))
 
     def update_lane_list(self):
         self.lane_list.clear()
