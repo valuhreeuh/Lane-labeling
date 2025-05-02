@@ -161,6 +161,13 @@ class LaneLabelTool(QMainWindow):
         self.project_id_label.setAlignment(Qt.AlignLeft)
         self.init_ui()
 
+        # 自动根据cache内容加载标注文件和图像
+        if self.cache.get("json_file_path"):
+            try:
+                self._open_annotation(self.cache["json_file_path"])
+            except Exception as e:
+                print(f"自动加载标注文件失败: {e}")
+
     def init_ui(self):
         # 顶部按钮
         top_layout = QHBoxLayout()
@@ -225,6 +232,12 @@ class LaneLabelTool(QMainWindow):
         redo_btn = QPushButton(self.lang_manager.get_text("btn_redo"))
         redo_btn.clicked.connect(self.redo)
 
+        # 新增：右侧操作区的上一张/下一张按钮
+        prev_img_btn = QPushButton(self.lang_manager.get_text("btn_prev"))
+        prev_img_btn.clicked.connect(self.prev_image)
+        next_img_btn = QPushButton(self.lang_manager.get_text("btn_next"))
+        next_img_btn.clicked.connect(self.next_image)
+
         show_points_btn = QPushButton(self.lang_manager.get_text("btn_show_points"))
         show_points_btn.clicked.connect(self.show_current_lane_points)
 
@@ -232,7 +245,6 @@ class LaneLabelTool(QMainWindow):
         organize_btn = QPushButton(self.lang_manager.get_text("btn_organize"))
         organize_btn.clicked.connect(self.organize_current_lane)
 
-        
         lane_list_label = QLabel(f"<b>{self.lang_manager.get_text('label_lane_list')}</b>")
         lane_list_label.setTextFormat(Qt.RichText)  # 确保使用富文本格式
         right_layout.addWidget(lane_list_label)
@@ -242,10 +254,15 @@ class LaneLabelTool(QMainWindow):
         right_layout.addWidget(del_lane_btn)
         right_layout.addWidget(undo_btn)
         right_layout.addWidget(redo_btn)
-        # add gap here
-        # right_layout.addStretch()
+        # 新增：添加上一张/下一张按钮
         right_layout.addWidget(organize_btn)  # 新增：整理按钮
         right_layout.addWidget(show_points_btn)
+        right_layout.addStretch()
+        # 新增：上一张/下一张按钮同一行
+        nav_btn_layout = QHBoxLayout()
+        nav_btn_layout.addWidget(prev_img_btn)
+        nav_btn_layout.addWidget(next_img_btn)
+        right_layout.addLayout(nav_btn_layout)
         right_layout.addStretch()
 
         main_layout = QHBoxLayout()
@@ -272,7 +289,7 @@ class LaneLabelTool(QMainWindow):
         redo_shortcut = QShortcut(QKeySequence("Ctrl+R"), self)
         redo_shortcut.activated.connect(self.redo)
         save_copy_shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
-        save_copy_shortcut.activated.connect(self.save_copy)
+        save_copy_shortcut.activated.connect(self.save_copy2)
 
     def load_cache(self):
         """加载缓存信息，包括上次标注的文件路径、文件名和图片索引"""
@@ -709,10 +726,17 @@ class LaneLabelTool(QMainWindow):
         self.save_cache()
         #print(f"save_copy, current_index: {self.current_index}")        
         QMessageBox.information(self, 
-            self.lang_manager.get_text("dialog_success"),
-            self.lang_manager.get_text("msg_save_copy_success", 
-                filename=copy_filepath))
-        
+                self.lang_manager.get_text("dialog_success"),
+                self.lang_manager.get_text("msg_save_copy_success", 
+                    filename=copy_filepath))
+
+    def save_copy2(self):
+        copy_filepath = self._save_copy()
+        # reopen the copy file
+        self.json_file_path = copy_filepath
+        self._open_annotation(copy_filepath)
+        self.save_cache()
+        # Do NOT show the dialog here, because it will be shown in the save_copy function
 
     def _save_copy(self):
         """保存标注数据的副本，文件名为原文件名加上_tmp.json"""
