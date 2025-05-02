@@ -11,7 +11,7 @@ import numpy as np
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QFileDialog, QLabel, QPushButton, QWidget,
     QVBoxLayout, QHBoxLayout, QListWidget, QMessageBox, QInputDialog, QListWidgetItem, QCheckBox,
-    QDialog, QFormLayout, QLineEdit, QDialogButtonBox  # 新增
+    QDialog, QFormLayout, QLineEdit, QDialogButtonBox, QComboBox  # 新增 QComboBox
 )
 from PyQt5.QtGui import QPixmap, QImage, QPainter, QColor, QPen
 from PyQt5.QtCore import Qt, QPoint
@@ -23,14 +23,20 @@ LANE_COLORS = [
 
 LANE_COLOR_NAMES = ["red", "green", "blue", "yellow", "purple", "cyan"]
 
+
 TUSIMPLE_IMG_SIZE = (1280, 720)
 CANVAS_SIZE = (960, 540)
+
+LANG_EN = "EN"
+LANG_CN = "CN"
+CFG_LANGS = [LANG_EN, LANG_CN]
 
 # 修改 ConfigDialog 类
 class ConfigDialog(QDialog):
     def __init__(self, config, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("配置")
+        self.lang_manager = parent.lang_manager
+        self.setWindowTitle(self.lang_manager.get_text("config_title"))
         self.setModal(True)
         self.resize(500, 300)
         
@@ -41,17 +47,24 @@ class ConfigDialog(QDialog):
         self.image_root = QLineEdit(self)
         self.image_root.setText(config.get("image_root", "datasets/TUSimple/tusimple"))
         self.image_root.setMinimumWidth(300)
-        layout.addRow("图片根路径:", self.image_root)
+        layout.addRow(self.lang_manager.get_text("config_image_root"), self.image_root)
         
         # 项目ID配置
         self.project_id = QLineEdit(self)
         self.project_id.setText(config.get("project_id", "tusimple_lane"))
-        layout.addRow("项目ID:", self.project_id)
+        layout.addRow(self.lang_manager.get_text("config_project_id"), self.project_id)
         
         # 最大车道线数配置
         self.max_lanes = QLineEdit(self)
         self.max_lanes.setText(str(config.get("max_lanes", 6)))
-        layout.addRow("最大车道线数:", self.max_lanes)
+        layout.addRow(self.lang_manager.get_text("config_max_lanes"), self.max_lanes)
+        
+        # 新增：语言选择下拉框
+        self.lang_combo = QComboBox(self)
+        self.lang_combo.addItems(["中文", "English"])
+        current_lang = config.get("lang", "CN")
+        self.lang_combo.setCurrentText("中文" if current_lang == "CN" else "English")
+        layout.addRow(self.lang_manager.get_text("config_lang"), self.lang_combo)
         
         # 添加确定和取消按钮
         button_box = QDialogButtonBox(
@@ -77,13 +90,51 @@ class ConfigDialog(QDialog):
         return {
             "image_root": self.image_root.text(),
             "project_id": self.project_id.text(),
-            "max_lanes": max_lanes
+            "max_lanes": max_lanes,
+            "lang": "CN" if self.lang_combo.currentText() == "中文" else "EN"
         }
+
+class LanguageManager:
+    def __init__(self):
+        self.resources = {}
+        self.current_lang = "CN"
+        self.load_resources()
+
+    def load_resources(self):
+        """加载语言资源文件"""
+        try:
+            with open("./res/res_cn.json", "r", encoding="utf-8") as f:
+                self.resources["CN"] = json.load(f)
+            with open("./res/res_en.json", "r", encoding="utf-8") as f:
+                self.resources["EN"] = json.load(f)
+        except Exception as e:
+            print(f"加载语言资源文件失败: {e}")
+            self.resources["CN"] = {}
+            self.resources["EN"] = {}
+
+    def set_language(self, lang):
+        """设置当前语言"""
+        if lang in ["CN", "EN"]:
+            self.current_lang = lang
+
+    def get_text(self, key, **kwargs):
+        """获取指定key的文本，支持格式化参数"""
+        text = self.resources.get(self.current_lang, {}).get(key, key)
+        if kwargs:
+            try:
+                return text.format(**kwargs)
+            except:
+                return text
+        return text
 
 class LaneLabelTool(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("TuSimple 2D Lane Annotation Editor(Author: Reuben)")
+        self.config = self.load_config()  # 先加载配置
+        self.lang_manager = LanguageManager()  # 创建语言管理器
+        self.lang_manager.set_language(self.config.get("lang", "CN"))  # 设置语言
+        
+        self.setWindowTitle(self.lang_manager.get_text("window_title"))
         #self.resize(1200, 800)
         #self.setMinimumSize(1600, 900)
         self.resize(1600, 900)
@@ -108,7 +159,6 @@ class LaneLabelTool(QMainWindow):
         self.selected_lane_indices = set()  # 新增：用于多选支持
         self.last_saved_lane_points = None  # 新增：用于保存上次保存的lane_points快照
         self.dataset_path = "datasets/TUSimple/tusimple"  # 新增：默认数据集路径
-        self.config = self.load_config()  # 加载配置文件
         self.project_id_label = QLabel("")  # 新增：用于显示project id
         self.project_id_label.setAlignment(Qt.AlignLeft)
         self.init_ui()
@@ -119,13 +169,13 @@ class LaneLabelTool(QMainWindow):
         
         # 左侧按钮组
         left_buttons = QHBoxLayout()
-        open_btn = QPushButton("打开标注文件")
+        open_btn = QPushButton(self.lang_manager.get_text("btn_open"))
         open_btn.clicked.connect(self.open_annotation)
-        save_copy_btn = QPushButton("保存副本")  # 移回左侧
+        save_copy_btn = QPushButton(self.lang_manager.get_text("btn_save_copy"))
         save_copy_btn.clicked.connect(self.save_copy)
-        prev_btn = QPushButton("上一张")
+        prev_btn = QPushButton(self.lang_manager.get_text("btn_prev"))
         prev_btn.clicked.connect(self.prev_image)
-        next_btn = QPushButton("下一张")
+        next_btn = QPushButton(self.lang_manager.get_text("btn_next"))
         next_btn.clicked.connect(self.next_image)
         
         left_buttons.addWidget(open_btn)
@@ -141,7 +191,7 @@ class LaneLabelTool(QMainWindow):
         config_btn.clicked.connect(self.show_config_dialog)
         
         # 保存按钮
-        save_btn = QPushButton("保存标注")
+        save_btn = QPushButton(self.lang_manager.get_text("btn_save"))
         save_btn.clicked.connect(self.save_annotation)
         
         right_buttons.addWidget(config_btn)
@@ -164,27 +214,28 @@ class LaneLabelTool(QMainWindow):
         self.lane_list.setSelectionMode(QListWidget.SingleSelection)  # 保持单选模式
         self.lane_list.currentRowChanged.connect(self.select_lane)
 
-        self.select_all_checkbox = QCheckBox("全选")
+        self.select_all_checkbox = QCheckBox(self.lang_manager.get_text("checkbox_select_all"))
         self.select_all_checkbox.setChecked(True)
         self.select_all_checkbox.stateChanged.connect(self.on_select_all_changed)
 
-        add_lane_btn = QPushButton("添加车道线")
+        add_lane_btn = QPushButton(self.lang_manager.get_text("btn_add_lane"))
         add_lane_btn.clicked.connect(self.add_lane)
-        del_lane_btn = QPushButton("删除车道线")
+        del_lane_btn = QPushButton(self.lang_manager.get_text("btn_del_lane"))
         del_lane_btn.clicked.connect(self.delete_lane)
-        undo_btn = QPushButton("撤销")
+        undo_btn = QPushButton(self.lang_manager.get_text("btn_undo"))
         undo_btn.clicked.connect(self.undo)
-        redo_btn = QPushButton("重做")
+        redo_btn = QPushButton(self.lang_manager.get_text("btn_redo"))
         redo_btn.clicked.connect(self.redo)
 
-        show_points_btn = QPushButton("显示当前车道线像素点")
+        show_points_btn = QPushButton(self.lang_manager.get_text("btn_show_points"))
         show_points_btn.clicked.connect(self.show_current_lane_points)
 
         # 新增：整理当前车道线按钮
-        organize_btn = QPushButton("整理当前车道线(线性插值)")
+        organize_btn = QPushButton(self.lang_manager.get_text("btn_organize"))
         organize_btn.clicked.connect(self.organize_current_lane)
 
-        right_layout.addWidget(QLabel("车道线列表"))
+        lane_list_label = QLabel(self.lang_manager.get_text("label_lane_list"))
+        right_layout.addWidget(lane_list_label)
         right_layout.addWidget(self.select_all_checkbox)
         right_layout.addWidget(self.lane_list)
         right_layout.addWidget(add_lane_btn)
@@ -242,7 +293,8 @@ class LaneLabelTool(QMainWindow):
 
     def open_annotation(self):
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "选择TuSimple标注文件", self.last_json_path, "JSON Files (*.json)"
+            self, self.lang_manager.get_text("dialog_open_file"), 
+            self.last_json_path, "JSON Files (*.json)"
         )
         if not file_path:
             return
@@ -267,8 +319,10 @@ class LaneLabelTool(QMainWindow):
         else:
             self.current_index = 0
             
-        self.project_id_label.setText(f"Project ID: {self.config['project_id']}")
-        self.json_file_label.setText(f"JSON文件: {os.path.basename(file_path)}")
+        self.project_id_label.setText(
+            self.lang_manager.get_text("label_project_id", id=self.config['project_id']))
+        self.json_file_label.setText(
+            self.lang_manager.get_text("label_json_file", filename=os.path.basename(file_path)))
         self.load_image_and_lanes()
         self.last_saved_lane_points = json.dumps(self.lane_points)
         self.save_cache()  # 保存新的缓存信息
@@ -277,7 +331,9 @@ class LaneLabelTool(QMainWindow):
         if not self.annotation_data:
             return
 
-        file_path, _ = QFileDialog.getSaveFileName(self, "保存标注文件", "", "JSON Files (*.json)")
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, self.lang_manager.get_text("dialog_save_file"), 
+            "", "JSON Files (*.json)")
         if not file_path:
             return
         
@@ -291,7 +347,11 @@ class LaneLabelTool(QMainWindow):
             for ann in self.annotation_data:
                 json.dump(ann, f)
                 f.write("\n")
-        QMessageBox.information(self, "保存成功", "标注已保存！")
+        QMessageBox.information(
+            self, 
+            self.lang_manager.get_text("dialog_success"), 
+            self.lang_manager.get_text("msg_save_success")
+        )
         self.last_saved_lane_points = json.dumps(self.lane_points)  # 新增：保存后更新快照
 
     def auto_interpolate_all_lanes_to_h_samples(self):
@@ -317,8 +377,8 @@ class LaneLabelTool(QMainWindow):
             min_y, max_y = min(ys), max(ys)
             interp_h_samples = [y for y in self.h_samples if min_y <= y <= max_y]
             if len(interp_h_samples) == 0:
-                #new_lane_points.append([])
-                print(f"车道线 {lane_idx} 没有h_samples上的点, 删除车道线")
+                print(self.lang_manager.get_text("msg_lane_deleted", 
+                    index=lane_idx))
                 continue
             interp_xs = np.interp(interp_h_samples, ys, xs)
             new_points = [(int(round(x)), int(y)) for x, y in zip(interp_xs, interp_h_samples)]
@@ -411,9 +471,21 @@ class LaneLabelTool(QMainWindow):
         # 更新路径和分辨率显示
         if self.image is not None:
             h, w = self.image.shape[:2]
-            self.path_label.setText(f"Image: #{self.current_index} | {self.image_path}    {w}x{h}")
+            self.path_label.setText(
+                self.lang_manager.get_text("label_image_info", 
+                    index=self.current_index,
+                    path=self.image_path,
+                    width=w,
+                    height=h
+                )
+            )
         else:
-            self.path_label.setText(f"Image: #{self.current_index} | {self.image_path}    (未加载)")
+            self.path_label.setText(
+                self.lang_manager.get_text("label_image_not_loaded",
+                    index=self.current_index,
+                    path=self.image_path
+                )
+            )
 
     def load_image(self):
         img = cv2.imread(self.image_path)
@@ -429,7 +501,10 @@ class LaneLabelTool(QMainWindow):
     def update_lane_list(self):
         self.lane_list.clear()
         for idx, lane in enumerate(self.lane_points):
-            item_text = f"车道线 {idx+1} ({len(lane)}点) {LANE_COLOR_NAMES[idx % len(LANE_COLORS)]}"
+            item_text = self.lang_manager.get_text("lane_item", 
+                index=idx+1, 
+                count=len(lane), 
+                color=LANE_COLOR_NAMES[idx % len(LANE_COLORS)])
             item = QListWidgetItem(item_text)
             color = LANE_COLORS[idx % len(LANE_COLORS)]
             item.setForeground(color)
@@ -544,12 +619,13 @@ class LaneLabelTool(QMainWindow):
         if 0 <= self.current_lane < len(self.lane_points):
             points = self.lane_points[self.current_lane]
             if not points:
-                msg = "当前车道线没有像素点。"
+                msg = self.lang_manager.get_text("msg_no_points")
             else:
                 msg = "\n".join([f"({x}, {y})" for x, y in points])
         else:
-            msg = "未选中任何车道线。"
-        QMessageBox.information(self, "当前车道线像素点", msg)
+            msg = self.lang_manager.get_text("msg_no_lane_selected")
+        QMessageBox.information(self, 
+            self.lang_manager.get_text("dialog_info"), msg)
 
     def organize_current_lane(self):
         """
@@ -557,10 +633,14 @@ class LaneLabelTool(QMainWindow):
         并用插值结果替换原有像素点列表。
         """
         if not (0 <= self.current_lane < len(self.lane_points)):
-            QMessageBox.warning(self, "警告", "未选中任何车道线。")
+            QMessageBox.warning(self, 
+                self.lang_manager.get_text("dialog_warning"),
+                self.lang_manager.get_text("msg_no_lane_selected"))
             return
         if not self.h_samples or len(self.lane_points[self.current_lane]) < 2:
-            QMessageBox.warning(self, "警告", "当前车道线点数不足或未加载h_samples。")
+            QMessageBox.warning(self, 
+                self.lang_manager.get_text("dialog_warning"),
+                self.lang_manager.get_text("msg_insufficient_points"))
             return
 
         # 取出并排序当前车道线的点
@@ -572,7 +652,9 @@ class LaneLabelTool(QMainWindow):
         min_y, max_y = min(ys), max(ys)
         interp_h_samples = [y for y in self.h_samples if min_y <= y <= max_y]
         if len(interp_h_samples) == 0:
-            QMessageBox.warning(self, "警告", "h_samples与当前车道线像素点无交集。")
+            QMessageBox.warning(self, 
+                self.lang_manager.get_text("dialog_warning"),
+                self.lang_manager.get_text("msg_no_intersection"))
             return
 
         # 线性插值
@@ -584,7 +666,10 @@ class LaneLabelTool(QMainWindow):
         self.lane_points[self.current_lane] = new_points
         self.update_lane_list()  # 新增：及时更新车道线列表
         self.update_canvas()
-        QMessageBox.information(self, "整理完成", f"已用线性插值生成{len(new_points)}个特征点。")
+        QMessageBox.information(self, 
+            self.lang_manager.get_text("dialog_success"),
+            self.lang_manager.get_text("msg_interpolation_success", 
+                count=len(new_points)))
 
     def save_copy(self):
         copy_filename = self._save_copy()
@@ -625,26 +710,31 @@ class LaneLabelTool(QMainWindow):
         return copy_filename
 
     def closeEvent(self, event):
-        reply = QMessageBox.question(self, '退出', '确定要退出吗？未保存的更改将丢失。',
-                                   QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        reply = QMessageBox.question(
+            self, 
+            self.lang_manager.get_text("dialog_exit"),
+            self.lang_manager.get_text("msg_exit"),
+            QMessageBox.Yes | QMessageBox.No, 
+            QMessageBox.No
+        )
         if reply == QMessageBox.Yes:
-            self.save_cache()  # 退出前保存缓存
+            self.save_cache()
             event.accept()
         else:
             event.ignore()
 
     def show_config_dialog(self):
-        """显示配置对话框"""
         dialog = ConfigDialog(self.config, self)
         
         if dialog.exec_() == QDialog.Accepted:
+            old_lang = self.config.get("lang", "CN")
             new_config = dialog.get_config()
             self.config.update(new_config)
             self.save_config()
             
-            # 更新相关变量
-            self.dataset_path = self.config["image_root"]
-            self.project_id_label.setText(f"Project ID: {self.config['project_id']}")  # 更新project id显示
+            if old_lang != new_config["lang"]:
+                QMessageBox.information(self, "提示", 
+                    self.lang_manager.get_text("msg_lang_changed"))
             
             # 如果当前车道线数超过新的最大值，删除多余的车道线
             max_lanes = self.config["max_lanes"]
@@ -660,7 +750,8 @@ class LaneLabelTool(QMainWindow):
         default_config = {
             "image_root": "datasets/TUSimple/tusimple",
             "project_id": "tusimple_lane",
-            "max_lanes": 6
+            "max_lanes": 6,
+            "lang": "CN"  # 新增默认语言设置
         }
         
         if os.path.exists(config_file):

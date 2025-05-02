@@ -1,0 +1,6 @@
+{
+    "image_root": "datasets/TUSimple/tusimple",
+    "project_id": "20250501",
+    "max_lanes": 4,
+    "lang": "EN"
+}
