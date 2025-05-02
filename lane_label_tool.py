@@ -83,7 +83,7 @@ class ConfigDialog(QDialog):
 class LaneLabelTool(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("车道线标注工具 Lane Annotation Editor")
+        self.setWindowTitle("TuSimple 2D Lane Annotation Editor(Author: Reuben)")
         #self.resize(1200, 800)
         #self.setMinimumSize(1600, 900)
         self.resize(1600, 900)
