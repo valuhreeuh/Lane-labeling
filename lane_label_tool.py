@@ -10,7 +10,8 @@ import cv2
 import numpy as np
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QFileDialog, QLabel, QPushButton, QWidget,
-    QVBoxLayout, QHBoxLayout, QListWidget, QMessageBox, QInputDialog, QListWidgetItem, QCheckBox
+    QVBoxLayout, QHBoxLayout, QListWidget, QMessageBox, QInputDialog, QListWidgetItem, QCheckBox,
+    QDialog, QFormLayout, QLineEdit, QDialogButtonBox  # 新增
 )
 from PyQt5.QtGui import QPixmap, QImage, QPainter, QColor, QPen
 from PyQt5.QtCore import Qt, QPoint
@@ -24,6 +25,60 @@ LANE_COLOR_NAMES = ["red", "green", "blue", "yellow", "purple", "cyan"]
 
 TUSIMPLE_IMG_SIZE = (1280, 720)
 CANVAS_SIZE = (960, 540)
+
+# 修改 ConfigDialog 类
+class ConfigDialog(QDialog):
+    def __init__(self, config, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("配置")
+        self.setModal(True)
+        self.resize(500, 300)
+        
+        # 创建表单布局
+        layout = QFormLayout()
+        
+        # 数据集根路径配置
+        self.image_root = QLineEdit(self)
+        self.image_root.setText(config.get("image_root", "datasets/TUSimple/tusimple"))
+        self.image_root.setMinimumWidth(300)
+        layout.addRow("图片根路径:", self.image_root)
+        
+        # 项目ID配置
+        self.project_id = QLineEdit(self)
+        self.project_id.setText(config.get("project_id", "tusimple_lane"))
+        layout.addRow("项目ID:", self.project_id)
+        
+        # 最大车道线数配置
+        self.max_lanes = QLineEdit(self)
+        self.max_lanes.setText(str(config.get("max_lanes", 6)))
+        layout.addRow("最大车道线数:", self.max_lanes)
+        
+        # 添加确定和取消按钮
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.Ok | QDialogButtonBox.Cancel,
+            Qt.Horizontal, self)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        
+        # 创建主布局
+        main_layout = QVBoxLayout()
+        main_layout.addLayout(layout)
+        main_layout.addWidget(button_box)
+        
+        self.setLayout(main_layout)
+    
+    def get_config(self):
+        """获取配置信息"""
+        try:
+            max_lanes = int(self.max_lanes.text())
+        except ValueError:
+            max_lanes = 6
+            
+        return {
+            "image_root": self.image_root.text(),
+            "project_id": self.project_id.text(),
+            "max_lanes": max_lanes
+        }
 
 class LaneLabelTool(QMainWindow):
     def __init__(self):
@@ -52,27 +107,59 @@ class LaneLabelTool(QMainWindow):
         self.select_all_checkbox = None  # 新增：全选复选框
         self.selected_lane_indices = set()  # 新增：用于多选支持
         self.last_saved_lane_points = None  # 新增：用于保存上次保存的lane_points快照
+        self.dataset_path = "datasets/TUSimple/tusimple"  # 新增：默认数据集路径
+        self.config = self.load_config()  # 加载配置文件
+        self.project_id_label = QLabel("")  # 新增：用于显示project id
+        self.project_id_label.setAlignment(Qt.AlignLeft)
         self.init_ui()
 
     def init_ui(self):
         # 顶部按钮
+        top_layout = QHBoxLayout()
+        
+        # 左侧按钮组
+        left_buttons = QHBoxLayout()
         open_btn = QPushButton("打开标注文件")
         open_btn.clicked.connect(self.open_annotation)
-        save_btn = QPushButton("保存标注")
-        save_btn.clicked.connect(self.save_annotation)
-        # 新增：保存副本按钮
-        save_copy_btn = QPushButton("保存副本")
+        save_copy_btn = QPushButton("保存副本")  # 移回左侧
         save_copy_btn.clicked.connect(self.save_copy)
         prev_btn = QPushButton("上一张")
         prev_btn.clicked.connect(self.prev_image)
         next_btn = QPushButton("下一张")
         next_btn.clicked.connect(self.next_image)
-        self.image_label = QLabel("未加载图片")
-        self.image_label.setAlignment(Qt.AlignCenter)
+        
+        left_buttons.addWidget(open_btn)
+        left_buttons.addWidget(save_copy_btn)  # 移回左侧
+        left_buttons.addWidget(prev_btn)
+        left_buttons.addWidget(next_btn)
+        
+        # 右侧按钮组
+        right_buttons = QHBoxLayout()
+        # 配置按钮
+        config_btn = QPushButton("⚙️")  # 使用齿轮emoji作为图标
+        config_btn.setFixedSize(30, 30)  # 设置按钮大小
+        config_btn.clicked.connect(self.show_config_dialog)
+        
+        # 保存按钮
+        save_btn = QPushButton("保存标注")
+        save_btn.clicked.connect(self.save_annotation)
+        
+        right_buttons.addWidget(config_btn)
+        right_buttons.addWidget(save_btn)
+        
+        # 将左右按钮组添加到顶部布局
+        top_layout.addLayout(left_buttons)
+        top_layout.addStretch()  # 添加弹性空间
+        top_layout.addLayout(right_buttons)
 
-        self.path_label.setAlignment(Qt.AlignLeft)  # 新增：左对齐
+        # 新增：按钮下方显示project id、json文件名、路径和分辨率
+        path_layout = QVBoxLayout()
+        path_layout.addLayout(top_layout)
+        path_layout.addWidget(self.project_id_label)  # 新增：添加project id label
+        path_layout.addWidget(self.json_file_label)
+        path_layout.addWidget(self.path_label)
 
-        # 右侧面板
+        right_layout = QVBoxLayout()
         self.lane_list = QListWidget()
         self.lane_list.setSelectionMode(QListWidget.SingleSelection)  # 保持单选模式
         self.lane_list.currentRowChanged.connect(self.select_lane)
@@ -97,21 +184,6 @@ class LaneLabelTool(QMainWindow):
         organize_btn = QPushButton("整理当前车道线(线性插值)")
         organize_btn.clicked.connect(self.organize_current_lane)
 
-        # 布局
-        top_layout = QHBoxLayout()
-        top_layout.addWidget(open_btn)
-        top_layout.addWidget(save_btn)
-        top_layout.addWidget(save_copy_btn)  # 新增：添加保存副本按钮
-        top_layout.addWidget(prev_btn)
-        top_layout.addWidget(next_btn)
-
-        # 新增：按钮下方显示json文件名、路径和分辨率
-        path_layout = QVBoxLayout()
-        path_layout.addLayout(top_layout)
-        path_layout.addWidget(self.json_file_label)  # 新增：添加json文件名label
-        path_layout.addWidget(self.path_label)
-
-        right_layout = QVBoxLayout()
         right_layout.addWidget(QLabel("车道线列表"))
         right_layout.addWidget(self.select_all_checkbox)
         right_layout.addWidget(self.lane_list)
@@ -143,12 +215,16 @@ class LaneLabelTool(QMainWindow):
         default_cache = {
             "last_json_path": "",      # 上次打开的目录
             "json_file_path": None,    # 上次打开的文件完整路径
-            "current_index": 0         # 上次标注的图片索引
+            "current_index": 0,        # 上次标注的图片索引
+            "dataset_path": "datasets/TUSimple/tusimple"  # 新增：默认数据集路径
         }
         if os.path.exists(cache_file):
             try:
                 with open(cache_file, "r") as f:
-                    return json.load(f)
+                    cache = json.load(f)
+                    # 加载数据集路径
+                    self.dataset_path = cache.get("dataset_path", default_cache["dataset_path"])
+                    return cache
             except Exception:
                 return default_cache
         return default_cache
@@ -158,7 +234,8 @@ class LaneLabelTool(QMainWindow):
         cache = {
             "last_json_path": self.last_json_path,
             "json_file_path": self.json_file_path,
-            "current_index": self.current_index
+            "current_index": self.current_index,
+            "dataset_path": self.dataset_path  # 新增：保存数据集路径
         }
         with open("cache.json", "w") as f:
             json.dump(cache, f)
@@ -190,6 +267,7 @@ class LaneLabelTool(QMainWindow):
         else:
             self.current_index = 0
             
+        self.project_id_label.setText(f"Project ID: {self.config['project_id']}")
         self.json_file_label.setText(f"JSON文件: {os.path.basename(file_path)}")
         self.load_image_and_lanes()
         self.last_saved_lane_points = json.dumps(self.lane_points)
@@ -282,7 +360,8 @@ class LaneLabelTool(QMainWindow):
             )
             if reply == QMessageBox.Yes:
                 # 保存到annotation_data
-                self.save_annotation()
+                #self.save_annotation()
+                self._save_copy()
                 return True
             elif reply == QMessageBox.No:
                 return True
@@ -316,7 +395,7 @@ class LaneLabelTool(QMainWindow):
 
     def load_image_and_lanes(self):
         ann = self.annotation_data[self.current_index]
-        self.image_path = os.path.join("datasets/TUSimple/tusimple", ann["raw_file"])
+        self.image_path = os.path.join(self.config["image_root"], ann["raw_file"])
         self.h_samples = ann["h_samples"]
         self.lane_points = []
         for lane in ann["lanes"]:
@@ -363,6 +442,11 @@ class LaneLabelTool(QMainWindow):
             self.update_canvas()
 
     def add_lane(self):
+        # 检查是否达到最大车道线数
+        if len(self.lane_points) >= self.config["max_lanes"]:
+            QMessageBox.warning(self, "警告", f"已达到最大车道线数量({self.config['max_lanes']})")
+            return
+            
         self.push_undo()
         self.lane_points.append([])
         self.current_lane = len(self.lane_points) - 1
@@ -503,6 +587,11 @@ class LaneLabelTool(QMainWindow):
         QMessageBox.information(self, "整理完成", f"已用线性插值生成{len(new_points)}个特征点。")
 
     def save_copy(self):
+        copy_filename = self._save_copy()
+        QMessageBox.information(self, "保存成功", f"副本已保存为：{copy_filename}")
+        
+
+    def _save_copy(self):
         """保存标注数据的副本，文件名为原文件名加上_tmp.json"""
         if not self.annotation_data:
             QMessageBox.warning(self, "警告", "没有标注数据可保存！")
@@ -512,7 +601,11 @@ class LaneLabelTool(QMainWindow):
         current_json = self.json_file_path
 
         # 生成副本文件名
-        copy_filename = f"{current_json}_tmp.json"
+        project_id = self.config["project_id"]
+        if current_json.endswith(f"{project_id}_tmp.json"):
+            copy_filename = current_json
+        else:
+            copy_filename = f"{current_json}_{project_id}_tmp.json"
         copy_filepath = os.path.join(self.last_json_path, copy_filename)
 
         # 新增：保存前自动检查并插值
@@ -525,11 +618,11 @@ class LaneLabelTool(QMainWindow):
                 json.dump(ann, f)
                 f.write("\n")
         
-        QMessageBox.information(self, "保存成功", f"副本已保存为：{copy_filename}")
         self.last_saved_lane_points = json.dumps(self.lane_points)  # 更新快照
         # 更新json_file_path
         self.json_file_path = copy_filepath
         self._open_annotation(copy_filepath)
+        return copy_filename
 
     def closeEvent(self, event):
         reply = QMessageBox.question(self, '退出', '确定要退出吗？未保存的更改将丢失。',
@@ -539,6 +632,54 @@ class LaneLabelTool(QMainWindow):
             event.accept()
         else:
             event.ignore()
+
+    def show_config_dialog(self):
+        """显示配置对话框"""
+        dialog = ConfigDialog(self.config, self)
+        
+        if dialog.exec_() == QDialog.Accepted:
+            new_config = dialog.get_config()
+            self.config.update(new_config)
+            self.save_config()
+            
+            # 更新相关变量
+            self.dataset_path = self.config["image_root"]
+            self.project_id_label.setText(f"Project ID: {self.config['project_id']}")  # 更新project id显示
+            
+            # 如果当前车道线数超过新的最大值，删除多余的车道线
+            max_lanes = self.config["max_lanes"]
+            if len(self.lane_points) > max_lanes:
+                self.lane_points = self.lane_points[:max_lanes]
+                self.update_lane_list()
+                self.update_canvas()
+                QMessageBox.information(self, "提示", f"已将车道线数量限制为{max_lanes}条")
+
+    def load_config(self):
+        """加载配置文件"""
+        config_file = "config.json"
+        default_config = {
+            "image_root": "datasets/TUSimple/tusimple",
+            "project_id": "tusimple_lane",
+            "max_lanes": 6
+        }
+        
+        if os.path.exists(config_file):
+            try:
+                with open(config_file, "r") as f:
+                    return json.load(f)
+            except Exception as e:
+                print(f"加载配置文件失败: {e}")
+                return default_config
+        else:
+            # 如果配置文件不存在，创建默认配置文件
+            with open(config_file, "w") as f:
+                json.dump(default_config, f, indent=4)
+            return default_config
+
+    def save_config(self):
+        """保存配置到文件"""
+        with open("config.json", "w") as f:
+            json.dump(self.config, f, indent=4)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
