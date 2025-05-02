@@ -263,10 +263,16 @@ class LaneLabelTool(QMainWindow):
         self.setCentralWidget(central_widget)
 
         # 添加快捷键：撤销 Ctrl+Z，重做 Ctrl+Y
+        add_shortcut = QShortcut(QKeySequence("Ctrl+A"), self)
+        add_shortcut.activated.connect(self.add_lane)
+        del_shortcut = QShortcut(QKeySequence("Ctrl+D"), self)
+        del_shortcut.activated.connect(self.delete_lane)
         undo_shortcut = QShortcut(QKeySequence("Ctrl+Z"), self)
         undo_shortcut.activated.connect(self.undo)
         redo_shortcut = QShortcut(QKeySequence("Ctrl+R"), self)
         redo_shortcut.activated.connect(self.redo)
+        save_copy_shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
+        save_copy_shortcut.activated.connect(self.save_copy)
 
     def load_cache(self):
         """加载缓存信息，包括上次标注的文件路径、文件名和图片索引"""
