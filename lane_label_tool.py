@@ -18,10 +18,10 @@ from PyQt5.QtCore import Qt, QPoint
 
 LANE_COLORS = [
     QColor(255, 0, 0), QColor(0, 255, 0), QColor(0, 0, 255),
-    QColor(255, 255, 0), QColor(255, 0, 255), QColor(0, 255, 255)
+    QColor(255, 0, 255), QColor(255, 255, 0), QColor(0, 255, 255)
 ]
 
-LANE_COLOR_NAMES = ["red", "green", "blue", "yellow", "purple", "cyan"]
+LANE_COLOR_NAMES = ["red", "green", "blue", "purple", "yellow", "cyan"]
 
 
 TUSIMPLE_IMG_SIZE = (1280, 720)
@@ -144,8 +144,6 @@ class LaneLabelTool(QMainWindow):
         self.undo_stack = []  # 撤销栈
         self.redo_stack = []  # 重做栈
         self.image = None
-        self.img_h_scale = CANVAS_SIZE[1] / TUSIMPLE_IMG_SIZE[1]
-        self.img_w_scale = CANVAS_SIZE[0] / TUSIMPLE_IMG_SIZE[0]
         self.image_path = ""
         self.h_samples = []
         self.lane_points = []  # [[(x1, y1), (x2, y2), ...], ...]
@@ -186,8 +184,8 @@ class LaneLabelTool(QMainWindow):
         # 右侧按钮组
         right_buttons = QHBoxLayout()
         # 配置按钮
-        config_btn = QPushButton("⚙️")  # 使用齿轮emoji作为图标
-        config_btn.setFixedSize(30, 30)  # 设置按钮大小
+        config_btn = QPushButton(self.lang_manager.get_text("btn_settings"))  # 使用齿轮emoji作为图标
+        #config_btn.setFixedSize(60, 30)  # 设置按钮大小
         config_btn.clicked.connect(self.show_config_dialog)
         
         # 保存按钮
@@ -372,7 +370,7 @@ class LaneLabelTool(QMainWindow):
         if not self.h_samples or not self.lane_points:
             return
         new_lane_points = []
-        for lane in self.lane_points:
+        for lane_idx, lane in enumerate(self.lane_points):
             if not lane or len(lane) < 2:
                 new_lane_points.append(lane)
                 continue
@@ -389,7 +387,7 @@ class LaneLabelTool(QMainWindow):
             interp_h_samples = [y for y in self.h_samples if min_y <= y <= max_y]
             if len(interp_h_samples) == 0:
                 print(self.lang_manager.get_text("msg_lane_deleted", 
-                    index=lane_idx))
+                    index=lane_idx+1))
                 continue
             interp_xs = np.interp(interp_h_samples, ys, xs)
             new_points = [(int(round(x)), int(y)) for x, y in zip(interp_xs, interp_h_samples)]
@@ -424,8 +422,8 @@ class LaneLabelTool(QMainWindow):
         current = json.dumps(self.lane_points)
         if self.last_saved_lane_points is not None and current != self.last_saved_lane_points:
             reply = QMessageBox.question(
-                self, "未保存的更改",
-                "当前图片的车道线有未保存的更改，是否保存？",
+                self, self.lang_manager.get_text("dialog_unsaved_changes"),
+                self.lang_manager.get_text("msg_unsaved_changes"),
                 QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
                 QMessageBox.Yes
             )
@@ -532,7 +530,10 @@ class LaneLabelTool(QMainWindow):
     def add_lane(self):
         # 检查是否达到最大车道线数
         if len(self.lane_points) >= self.config["max_lanes"]:
-            QMessageBox.warning(self, "警告", f"已达到最大车道线数量({self.config['max_lanes']})")
+            QMessageBox.warning(self, 
+                self.lang_manager.get_text("dialog_warning"),
+                self.lang_manager.get_text("msg_max_lanes", 
+                    max=self.config["max_lanes"]))
             return
             
         self.push_undo()
@@ -572,10 +573,10 @@ class LaneLabelTool(QMainWindow):
 
         # 只画水平参考线
         if hasattr(self, "h_samples") and self.h_samples:
-            pen = QPen(QColor(200, 200, 200), 1, Qt.DashLine)
+            pen = QPen(QColor(100, 100, 100), 1, Qt.DashLine)
             painter.setPen(pen)
             for i in range(len(self.h_samples)):
-                if i % 2 == 0:
+                if (i % 4 == 0) or (i == len(self.h_samples) - 1):
                     y = self.h_samples[i]
                     painter.drawLine(0, y, 1280, y)
                     painter.setPen(QColor(80, 80, 80))
@@ -686,13 +687,18 @@ class LaneLabelTool(QMainWindow):
 
     def save_copy(self):
         copy_filename = self._save_copy()
-        QMessageBox.information(self, "保存成功", f"副本已保存为：{copy_filename}")
+        QMessageBox.information(self, 
+            self.lang_manager.get_text("dialog_success"),
+            self.lang_manager.get_text("msg_save_copy_success", 
+                filename=copy_filename))
         
 
     def _save_copy(self):
         """保存标注数据的副本，文件名为原文件名加上_tmp.json"""
         if not self.annotation_data:
-            QMessageBox.warning(self, "警告", "没有标注数据可保存！")
+            QMessageBox.warning(self, 
+                self.lang_manager.get_text("dialog_warning"),
+                self.lang_manager.get_text("msg_no_data"))
             return
 
         # Check if current lanes exceed max_lanes
@@ -757,7 +763,8 @@ class LaneLabelTool(QMainWindow):
             self.save_config()
             
             if old_lang != new_config["lang"]:
-                QMessageBox.information(self, "提示", 
+                QMessageBox.information(self, 
+                    self.lang_manager.get_text("dialog_info"), 
                     self.lang_manager.get_text("msg_lang_changed"))
             
             # 如果当前车道线数超过新的最大值，删除多余的车道线
