@@ -12,7 +12,7 @@ import numpy as np
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QFileDialog, QLabel, QPushButton, QWidget,
     QVBoxLayout, QHBoxLayout, QListWidget, QMessageBox, QInputDialog, QListWidgetItem, QCheckBox,
-    QDialog, QFormLayout, QLineEdit, QDialogButtonBox, QComboBox, QShortcut  # 新增 QComboBox 和 QShortcut
+    QDialog, QFormLayout, QLineEdit, QDialogButtonBox, QComboBox, QShortcut, QProgressBar  # 新增 QProgressBar
 )
 from PyQt5.QtGui import QPixmap, QImage, QPainter, QColor, QPen, QKeySequence
 from PyQt5.QtCore import Qt, QPoint
@@ -159,6 +159,12 @@ class LaneLabelTool(QMainWindow):
         self.last_saved_lane_points = None  # 新增：用于保存上次保存的lane_points快照
         self.project_id_label = QLabel("")  # 新增：用于显示project id
         self.project_id_label.setAlignment(Qt.AlignLeft)
+        # 进度条和总数标签
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setMinimum(0)
+        self.progress_bar.setMaximum(100)
+        self.progress_bar.setValue(0)
+        self.progress_total_label = QLabel("0")  # 默认显示0
         self.init_ui()
 
         # 自动根据cache内容加载标注文件和图像
@@ -227,6 +233,10 @@ class LaneLabelTool(QMainWindow):
         add_lane_btn.clicked.connect(self.add_lane)
         del_lane_btn = QPushButton(self.lang_manager.get_text("btn_del_lane"))
         del_lane_btn.clicked.connect(self.delete_lane)
+        # 清空像素点按钮
+        clear_points_btn = QPushButton(self.lang_manager.get_text("btn_clear_points"))
+        clear_points_btn.clicked.connect(self.clear_current_lane_points)
+                
         undo_btn = QPushButton(self.lang_manager.get_text("btn_undo"))
         undo_btn.clicked.connect(self.undo)
         redo_btn = QPushButton(self.lang_manager.get_text("btn_redo"))
@@ -252,17 +262,34 @@ class LaneLabelTool(QMainWindow):
         right_layout.addWidget(self.lane_list)
         right_layout.addWidget(add_lane_btn)
         right_layout.addWidget(del_lane_btn)
+        right_layout.addWidget(clear_points_btn)
         right_layout.addWidget(undo_btn)
         right_layout.addWidget(redo_btn)
         # 新增：添加上一张/下一张按钮
         right_layout.addWidget(organize_btn)  # 新增：整理按钮
         right_layout.addWidget(show_points_btn)
+        #right_layout.addLayout(progress_layout)
         right_layout.addStretch()
         # 新增：上一张/下一张按钮同一行
         nav_btn_layout = QHBoxLayout()
         nav_btn_layout.addWidget(prev_img_btn)
         nav_btn_layout.addWidget(next_img_btn)
         right_layout.addLayout(nav_btn_layout)
+
+        progress_layout = QHBoxLayout()
+        progress_layout.addWidget(self.progress_bar)
+        #progress_layout.addStretch()  # 添加弹性空间
+        progress_layout.addWidget(self.progress_total_label)
+        progress_layout.setStretch(0, 4)  # 第0个控件（进度条）占4份
+        progress_layout.setStretch(1, 1)  # 第1个控件（标签）占1份
+        right_layout.addLayout(progress_layout)
+        # 跳转图片输入框和按钮
+        self.goto_image_input = QLineEdit()
+        self.goto_image_input.setPlaceholderText(self.lang_manager.get_text("goto_image_input"))
+        self.goto_image_btn = QPushButton(self.lang_manager.get_text("goto_image_btn"))
+        self.goto_image_btn.clicked.connect(self.goto_image_by_index)
+        right_layout.addWidget(self.goto_image_input)
+        right_layout.addWidget(self.goto_image_btn)        
         right_layout.addStretch()
 
         main_layout = QHBoxLayout()
@@ -284,6 +311,9 @@ class LaneLabelTool(QMainWindow):
         add_shortcut.activated.connect(self.add_lane)
         del_shortcut = QShortcut(QKeySequence("Ctrl+D"), self)
         del_shortcut.activated.connect(self.delete_lane)
+        # 快捷键绑定
+        clear_points_shortcut = QShortcut(QKeySequence("Ctrl+E"), self)
+        clear_points_shortcut.activated.connect(self.clear_current_lane_points)        
         undo_shortcut = QShortcut(QKeySequence("Ctrl+Z"), self)
         undo_shortcut.activated.connect(self.undo)
         redo_shortcut = QShortcut(QKeySequence("Ctrl+R"), self)
@@ -308,6 +338,13 @@ class LaneLabelTool(QMainWindow):
                 return default_cache
         return default_cache
 
+    def update_progress_bar(self):
+        """更新进度条"""
+        total_images = len(self.annotation_data)
+        current_index = self.current_index
+        progress = int((current_index / total_images) * 100)
+        self.progress_bar.setValue(progress)
+        self.progress_total_label.setText(f"{current_index}/{total_images}")
     def save_cache(self):
         """保存缓存信息"""
         cache = {
@@ -343,18 +380,22 @@ class LaneLabelTool(QMainWindow):
             saved_index = self.cache.get("current_index", 0)
             if 0 <= saved_index < len(self.annotation_data):
                 self.current_index = saved_index
+                self.reset_undo_redo()
             else:
                 self.current_index = 0
                 self.save_cache()
+                self.reset_undo_redo()
         else:
             self.current_index = 0
             self.save_cache()
+            self.reset_undo_redo()
             
         self.project_id_label.setText(
             self.lang_manager.get_text("label_project_id", id=self.config['project_id']))
         self.json_file_label.setText(
             self.lang_manager.get_text("label_json_file", filename=os.path.basename(file_path)))
         self.load_image_and_lanes()
+        
         #self.last_saved_lane_points = json.dumps(self.lane_points)
         #self.save_cache()  # 保存新的缓存信息
 
@@ -437,6 +478,7 @@ class LaneLabelTool(QMainWindow):
             self.current_index -= 1
             self.save_cache()  # 保存当前索引
             self.load_image_and_lanes()
+            self.reset_undo_redo()
 
     def next_image(self):
         if self.current_index < len(self.annotation_data) - 1:
@@ -446,6 +488,23 @@ class LaneLabelTool(QMainWindow):
             self.current_index += 1
             self.save_cache()  # 保存当前索引
             self.load_image_and_lanes()
+            self.reset_undo_redo()
+
+    def goto_image_by_index(self):
+        text = self.goto_image_input.text()
+        if not text.isdigit():
+            QMessageBox.warning(self, self.lang_manager.get_text("dialog_warning"), 
+                self.lang_manager.get_text("msg_invalid_image_index"))
+            return
+        idx = int(text)  # 假设用户输入1为第一张图片
+        if not hasattr(self, "annotation_data") or idx < 0 or idx >= len(self.annotation_data):
+            QMessageBox.warning(self, self.lang_manager.get_text("dialog_warning"), 
+                self.lang_manager.get_text("msg_image_index_out_of_range"))
+            return
+        self.current_index = idx
+        self.save_cache()  # 保存当前索引
+        self.load_image_and_lanes()
+        self.reset_undo_redo()
 
     def check_unsaved_changes(self):
         """
@@ -513,6 +572,7 @@ class LaneLabelTool(QMainWindow):
         self.load_image()
         self.update_canvas()
         self.last_saved_lane_points = copy.deepcopy(self.lane_points)
+        self.update_progress_bar()
         # 更新路径和分辨率显示
         if self.image is not None:
             h, w = self.image.shape[:2]
@@ -566,7 +626,7 @@ class LaneLabelTool(QMainWindow):
             QMessageBox.warning(self, 
                 self.lang_manager.get_text("dialog_warning"),
                 self.lang_manager.get_text("msg_max_lanes", 
-                    max=self.config["max_lanes"]))
+                    max_lanes=self.config["max_lanes"]))
             return
             
         self.push_undo()
@@ -582,6 +642,13 @@ class LaneLabelTool(QMainWindow):
         del self.lane_points[self.current_lane]
         self.current_lane = max(0, self.current_lane - 1)
         self.update_lane_list()
+        self.update_canvas()
+
+    def clear_current_lane_points(self):
+        if len(self.lane_points) == 0:
+            return
+        self.push_undo()
+        self.lane_points[self.current_lane] = []
         self.update_canvas()
 
     def on_canvas_click(self, event):
@@ -634,6 +701,12 @@ class LaneLabelTool(QMainWindow):
                 painter.drawEllipse(QPoint(*pt), 2, 2)  # 修改：直径为3（半径为1）
         painter.end()
         self.canvas.setPixmap(pixmap)
+
+    
+    def reset_undo_redo(self):
+        self.undo_stack.clear()
+        self.redo_stack.clear()
+        self.undo_stack.append(json.dumps(self.lane_points))
 
     def push_undo(self):
         self.undo_stack.append(json.dumps(self.lane_points))
