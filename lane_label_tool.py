@@ -184,15 +184,15 @@ class LaneLabelTool(QMainWindow):
         open_btn.clicked.connect(self.open_annotation)
         save_copy_btn = QPushButton(self.lang_manager.get_text("btn_save_copy"))
         save_copy_btn.clicked.connect(self.save_copy)
-        prev_btn = QPushButton(self.lang_manager.get_text("btn_prev"))
-        prev_btn.clicked.connect(self.prev_image)
-        next_btn = QPushButton(self.lang_manager.get_text("btn_next"))
-        next_btn.clicked.connect(self.next_image)
+        #prev_btn = QPushButton(self.lang_manager.get_text("btn_prev"))
+        #prev_btn.clicked.connect(self.prev_image)
+        #next_btn = QPushButton(self.lang_manager.get_text("btn_next"))
+        #next_btn.clicked.connect(self.next_image)
         
         left_buttons.addWidget(open_btn)
         left_buttons.addWidget(save_copy_btn)  # 移回左侧
-        left_buttons.addWidget(prev_btn)
-        left_buttons.addWidget(next_btn)
+        #left_buttons.addWidget(prev_btn)
+        #left_buttons.addWidget(next_btn)
         
         # 顶部右侧按钮组
         right_buttons = QHBoxLayout()
@@ -320,6 +320,7 @@ class LaneLabelTool(QMainWindow):
         redo_shortcut.activated.connect(self.redo)
         save_copy_shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
         save_copy_shortcut.activated.connect(self.save_copy2)
+
 
     def load_cache(self):
         """加载缓存信息，包括上次标注的文件路径、文件名和图片索引"""
