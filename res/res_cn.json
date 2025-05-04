@@ -2,7 +2,7 @@
     "window_title": "TuSimple 2D Lane Annotation Editor(Author: Reuben)",
     "btn_open": "打开标注文件",
     "btn_save_copy": "保存副本",
-    "btn_prev": "上一张 <<",
+    "btn_prev": "<< 上一张",
     "btn_next": "下一张 >>",
     "btn_save": "保存标注",
     "btn_add_lane": "添加车道线(Ctrl+A)",

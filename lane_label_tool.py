@@ -104,9 +104,13 @@ class LanguageManager:
     def load_resources(self):
         """加载语言资源文件"""
         try:
-            with open("./res/res_cn.json", "r", encoding="utf-8") as f:
+            res_cn_path = resource_path("res/res_cn.json")
+            res_en_path = resource_path("res/res_en.json")
+            print(f"res_cn_path: {res_cn_path}")
+            print(f"res_en_path: {res_en_path}")
+            with open(res_cn_path, "r", encoding="utf-8") as f:
                 self.resources["CN"] = json.load(f)
-            with open("./res/res_en.json", "r", encoding="utf-8") as f:
+            with open(res_en_path, "r", encoding="utf-8") as f:
                 self.resources["EN"] = json.load(f)
         except Exception as e:
             print(f"加载语言资源文件失败: {e}")
@@ -925,12 +929,18 @@ class LaneLabelTool(QMainWindow):
         with open("config.json", "w") as f:
             json.dump(self.config, f, indent=4)
 
+def resource_path(relative_path):
+    """获取资源文件的绝对路径，兼容PyInstaller打包和源码运行"""
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(os.path.abspath("."), relative_path)
+
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     win = LaneLabelTool()
     win.show()
     sys.exit(app.exec_())
-
+    # pyinstaller --noconfirm --onefile --add-data "res:res" lane_label_tool.py
 
 
 
