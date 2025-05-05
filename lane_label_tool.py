@@ -16,6 +16,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtGui import QPixmap, QImage, QPainter, QColor, QPen, QKeySequence
 from PyQt5.QtCore import Qt, QPoint
+import logging
 
 LANE_COLORS = [
     QColor(255, 0, 0), QColor(0, 255, 0), QColor(0, 0, 255),
@@ -31,6 +32,16 @@ CANVAS_SIZE = (960, 540)
 LANG_EN = "EN"
 LANG_CN = "CN"
 CFG_LANGS = [LANG_EN, LANG_CN]
+
+# 日志初始化
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.FileHandler("app.log", encoding="utf-8"),
+        logging.StreamHandler()
+    ]
+)
 
 # 修改 ConfigDialog 类
 class ConfigDialog(QDialog):
@@ -134,49 +145,54 @@ class LanguageManager:
 
 class LaneLabelTool(QMainWindow):
     def __init__(self):
-        super().__init__()
-        self.config = self.load_config()  # 先加载配置
-        self.lang_manager = LanguageManager()  # 创建语言管理器
-        self.lang_manager.set_language(self.config.get("lang", "CN"))  # 设置语言
-        
-        self.setWindowTitle(self.lang_manager.get_text("window_title"))
-        #self.resize(1200, 800)
-        #self.setMinimumSize(1600, 900)
-        self.resize(1600, 900)
-        self.annotation_data = []
-        self.current_index = 0  # 当前标注的图片索引
-        self.current_lane = 0  # 当前标注的车道线索引
-        self.undo_stack = []  # 撤销栈
-        self.redo_stack = []  # 重做栈
-        self.image = None
-        self.image_path = ""
-        self.h_samples = []
-        self.lane_points = []  # [[(x1, y1), (x2, y2), ...], ...]
-        self.path_label = QLabel("")  # 新增：用于显示路径和分辨率
-        self.json_file_label = QLabel("")  # 新增：用于显示json文件名
-        self.json_file_label.setAlignment(Qt.AlignLeft)
-        self.json_file_path = None
-        self.cache = self.load_cache()  # 修改：加载完整的缓存信息
-        self.last_json_path = self.cache.get("last_json_path", "")
-        self.select_all_checkbox = None  # 新增：全选复选框
-        self.selected_lane_indices = set()  # 新增：用于多选支持
-        self.last_saved_lane_points = None  # 新增：用于保存上次保存的lane_points快照
-        self.project_id_label = QLabel("")  # 新增：用于显示project id
-        self.project_id_label.setAlignment(Qt.AlignLeft)
-        # 进度条和总数标签
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setMinimum(0)
-        self.progress_bar.setMaximum(100)
-        self.progress_bar.setValue(0)
-        self.progress_total_label = QLabel("0")  # 默认显示0
-        self.init_ui()
+        logging.info("LaneLabelTool initializing...")
+        try:
+            super().__init__()
+            self.config = self.load_config()
+            self.lang_manager = LanguageManager()
+            self.lang_manager.set_language(self.config.get("lang", "CN"))
+            
+            self.setWindowTitle(self.lang_manager.get_text("window_title"))
+            #self.resize(1200, 800)
+            #self.setMinimumSize(1600, 900)
+            self.resize(1600, 900)
+            self.annotation_data = []
+            self.current_index = 0  # 当前标注的图片索引
+            self.current_lane = 0  # 当前标注的车道线索引
+            self.undo_stack = []  # 撤销栈
+            self.redo_stack = []  # 重做栈
+            self.image = None
+            self.image_path = ""
+            self.h_samples = []
+            self.lane_points = []  # [[(x1, y1), (x2, y2), ...], ...]
+            self.path_label = QLabel("")  # 新增：用于显示路径和分辨率
+            self.json_file_label = QLabel("")  # 新增：用于显示json文件名
+            self.json_file_label.setAlignment(Qt.AlignLeft)
+            self.json_file_path = None
+            self.cache = self.load_cache()  # 修改：加载完整的缓存信息
+            self.last_json_path = self.cache.get("last_json_path", "")
+            self.select_all_checkbox = None  # 新增：全选复选框
+            self.selected_lane_indices = set()  # 新增：用于多选支持
+            self.last_saved_lane_points = None  # 新增：用于保存上次保存的lane_points快照
+            self.project_id_label = QLabel("")  # 新增：用于显示project id
+            self.project_id_label.setAlignment(Qt.AlignLeft)
+            # 进度条和总数标签
+            self.progress_bar = QProgressBar()
+            self.progress_bar.setMinimum(0)
+            self.progress_bar.setMaximum(100)
+            self.progress_bar.setValue(0)
+            self.progress_total_label = QLabel("0")  # 默认显示0
+            self.init_ui()
 
-        # 自动根据cache内容加载标注文件和图像
-        if self.cache.get("json_file_path"):
-            try:
-                self._open_annotation(self.cache["json_file_path"])
-            except Exception as e:
-                print(f"自动加载标注文件失败: {e}")
+            # 自动根据cache内容加载标注文件和图像
+            if self.cache.get("json_file_path"):
+                try:
+                    self._open_annotation(self.cache["json_file_path"])
+                except Exception as e:
+                    logging.exception(f"自动加载标注文件失败: {e}")
+        except Exception as e:
+            logging.exception(f"LaneLabelTool 初始化异常: {e}")
+            raise
 
     def init_ui(self):
         # 顶部按钮
@@ -561,51 +577,61 @@ class LaneLabelTool(QMainWindow):
         self.annotation_data[self.current_index]['lanes'] = lanes
 
     def load_image_and_lanes(self):
-        ann = self.annotation_data[self.current_index]
-        self.image_path = os.path.join(self.config["image_root"], ann["raw_file"])
-        self.h_samples = ann["h_samples"]
-        self.lane_points = []
-        for lane in ann["lanes"]:
-            points = []
-            for x, y in zip(lane, self.h_samples):
-                if x >= 0:
-                    points.append((x, y))
-            self.lane_points.append(points)
-        self.current_lane = 0
-        self.select_all_checkbox.setChecked(True)
-        self.update_lane_list()
-        self.load_image()
-        self.update_canvas()
-        self.last_saved_lane_points = copy.deepcopy(self.lane_points)
-        self.update_progress_bar()
-        # 更新路径和分辨率显示
-        if self.image is not None:
-            h, w = self.image.shape[:2]
-            self.path_label.setText(
-                self.lang_manager.get_text("label_image_info", 
-                    index=self.current_index,
-                    path=self.image_path,
-                    width=w,
-                    height=h
+        try:
+            logging.info(f"加载标注数据 index={self.current_index}")
+            ann = self.annotation_data[self.current_index]
+            self.image_path = os.path.join(self.config["image_root"], ann["raw_file"])
+            self.h_samples = ann["h_samples"]
+            self.lane_points = []
+            for lane in ann["lanes"]:
+                points = []
+                for x, y in zip(lane, self.h_samples):
+                    if x >= 0:
+                        points.append((x, y))
+                self.lane_points.append(points)
+            self.current_lane = 0
+            self.select_all_checkbox.setChecked(True)
+            self.update_lane_list()
+            self.load_image()
+            self.update_canvas()
+            self.last_saved_lane_points = copy.deepcopy(self.lane_points)
+            self.update_progress_bar()
+            # 更新路径和分辨率显示
+            if self.image is not None:
+                h, w = self.image.shape[:2]
+                self.path_label.setText(
+                    self.lang_manager.get_text("label_image_info", 
+                        index=self.current_index,
+                        path=self.image_path,
+                        width=w,
+                        height=h
+                    )
                 )
-            )
-        else:
-            self.path_label.setText(
-                self.lang_manager.get_text("label_image_not_loaded",
-                    index=self.current_index,
-                    path=self.image_path
+            else:
+                self.path_label.setText(
+                    self.lang_manager.get_text("label_image_not_loaded",
+                        index=self.current_index,
+                        path=self.image_path
+                    )
                 )
-            )
-        
+        except Exception as e:
+            logging.exception(f"加载图片和车道线异常: {e}")
+
     def load_image(self):
-        img = cv2.imread(self.image_path)
-        img_h, img_w = img.shape[:2]
-        assert img_h == TUSIMPLE_IMG_SIZE[1] and img_w == TUSIMPLE_IMG_SIZE[0], f"Image size mismatch, img_h: {img_h}, img_w: {img_w}"
-        if img is None:
-            #self.image = np.zeros((CANVAS_SIZE[1], CANVAS_SIZE[0], 3), dtype=np.uint8)
+        logging.info(f"加载图片: {self.image_path}")
+        try:
+            img = cv2.imread(self.image_path)
+            if img is None:
+                logging.error(f"图片加载失败: {self.image_path}")
+                self.image = np.zeros((TUSIMPLE_IMG_SIZE[1], TUSIMPLE_IMG_SIZE[0], 3), dtype=np.uint8)
+            else:
+                img_h, img_w = img.shape[:2]
+                logging.info(f"图片尺寸: {img_w}x{img_h}")
+                assert img_h == TUSIMPLE_IMG_SIZE[1] and img_w == TUSIMPLE_IMG_SIZE[0], f"Image size mismatch, img_h: {img_h}, img_w: {img_w}"
+                self.image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        except Exception as e:
+            logging.exception(f"加载图片异常: {self.image_path} : {e}")
             self.image = np.zeros((TUSIMPLE_IMG_SIZE[1], TUSIMPLE_IMG_SIZE[0], 3), dtype=np.uint8)
-        else:
-            self.image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
     def update_lane_list(self):
         self.lane_list.clear()
@@ -936,10 +962,14 @@ def resource_path(relative_path):
     return os.path.join(os.path.abspath("."), relative_path)
 
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    win = LaneLabelTool()
-    win.show()
-    sys.exit(app.exec_())
+    try:
+        logging.info("程序启动")
+        app = QApplication(sys.argv)
+        win = LaneLabelTool()
+        win.show()
+        sys.exit(app.exec_())
+    except Exception as e:
+        logging.exception(f"主程序异常: {e}")
     # pyinstaller --noconfirm --onefile --add-data "res:res" lane_label_tool.py
 
 
