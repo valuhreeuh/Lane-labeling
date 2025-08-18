@@ -4,6 +4,7 @@
     "btn_save_copy": "保存副本",
     "btn_prev": "<< 上一张",
     "btn_next": "下一张 >>",
+    "checkbox_junction_only": "仅标注交叉口",
     "btn_save": "保存标注",
     "btn_add_lane": "添加车道线(Ctrl+A)",
     "btn_del_lane": "删除车道线(Ctrl+D)",
@@ -54,5 +55,7 @@
     "goto_image_input": "输入图片编号: 0 ~ N",
     "goto_image_btn": "跳转",
     "msg_invalid_image_index": "请输入有效的图片编号（数字 0 ~ N）",
-    "msg_image_index_out_of_range": "图片编号超出范围"
+    "msg_image_index_out_of_range": "图片编号超出范围",
+    "msg_no_prev_image": "没有上一张图片",
+    "msg_no_next_image": "没有下一张图片"
 } 

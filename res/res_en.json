@@ -4,6 +4,7 @@
     "btn_save_copy": "Save Anno. Copy",
     "btn_prev": "<< Previous Image",
     "btn_next": "Next Image >>",
+    "checkbox_junction_only": "Junction Only",
     "btn_save": "Save Annotations",
     "btn_add_lane": "Add Lane(Ctrl+A)",
     "btn_del_lane": "Delete Lane(Ctrl+D)",
@@ -54,5 +55,7 @@
     "goto_image_input": "Enter Image Index: 0 ~ N",
     "goto_image_btn": "Goto",
     "msg_invalid_image_index": "Please enter a valid image index (number 0 ~ N)",
-    "msg_image_index_out_of_range": "Image index out of range"
+    "msg_image_index_out_of_range": "Image index out of range",
+    "msg_no_prev_image": "No previous image",
+    "msg_no_next_image": "No next image"
 } 
