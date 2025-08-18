@@ -1,6 +1,6 @@
 {
-    "image_root": "datasets/TUSimple/tusimple",
-    "project_id": "20250501",
+    "image_root": "/data/carla_sim_digital_mirrors/logs/scene_000005/",
+    "project_id": "202508",
     "max_lanes": 4,
-    "lang": "EN"
+    "lang": "CN"
 }
