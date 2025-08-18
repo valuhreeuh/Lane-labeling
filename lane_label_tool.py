@@ -580,7 +580,9 @@ class LaneLabelTool(QMainWindow):
         try:
             logging.info(f"加载标注数据 index={self.current_index}")
             ann = self.annotation_data[self.current_index]
-            self.image_path = os.path.join(self.config["image_root"], ann["raw_file"])
+            #self.image_path = os.path.join(self.config["image_root"], ann["raw_file"])
+            # raw_file is relative path to the json file
+            self.image_path = os.path.join(self.last_json_path, ann["raw_file"])
             self.h_samples = ann["h_samples"]
             self.lane_points = []
             for lane in ann["lanes"]:
