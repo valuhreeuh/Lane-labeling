@@ -182,6 +182,7 @@ class LaneLabelTool(QMainWindow):
             self.progress_bar.setMaximum(100)
             self.progress_bar.setValue(0)
             self.progress_total_label = QLabel("0")  # 默认显示0
+            self.junction_only = self.cache.get("junction_only", True)
             self.init_ui()
 
             # 自动根据cache内容加载标注文件和图像
@@ -263,6 +264,9 @@ class LaneLabelTool(QMainWindow):
         redo_btn.clicked.connect(self.redo)
 
         # 新增：右侧操作区的上一张/下一张按钮
+        junction_only_checkbox = QCheckBox(self.lang_manager.get_text("checkbox_junction_only"))
+        junction_only_checkbox.setChecked(self.junction_only)
+        junction_only_checkbox.stateChanged.connect(self.on_junction_only_changed)
         prev_img_btn = QPushButton(self.lang_manager.get_text("btn_prev"))
         prev_img_btn.clicked.connect(self.prev_image)
         next_img_btn = QPushButton(self.lang_manager.get_text("btn_next"))
@@ -291,6 +295,10 @@ class LaneLabelTool(QMainWindow):
         #right_layout.addLayout(progress_layout)
         right_layout.addStretch()
         # 新增：上一张/下一张按钮同一行
+
+        nav_btn_layout0 = QHBoxLayout()
+        nav_btn_layout0.addWidget(junction_only_checkbox)
+        right_layout.addLayout(nav_btn_layout0)
         nav_btn_layout = QHBoxLayout()
         nav_btn_layout.addWidget(prev_img_btn)
         nav_btn_layout.addWidget(next_img_btn)
@@ -349,6 +357,7 @@ class LaneLabelTool(QMainWindow):
             "last_json_path": "",      # 上次打开的目录
             "json_file_path": None,    # 上次打开的文件完整路径
             "current_index": 0,        # 上次标注的图片索引
+            "junction_only": True,     # 上次标注的图片索引
         }
         if os.path.exists(cache_file):
             try:
@@ -372,6 +381,7 @@ class LaneLabelTool(QMainWindow):
             "last_json_path": self.last_json_path,
             "json_file_path": self.json_file_path,
             "current_index": self.current_index,
+            "junction_only": self.junction_only,
         }
         with open("cache.json", "w") as f:
             json.dump(cache, f)
@@ -492,24 +502,69 @@ class LaneLabelTool(QMainWindow):
         self.update_lane_list()
         self.update_canvas()
 
+    def on_junction_only_changed(self, state):
+        old_junction_only = self.junction_only
+        self.junction_only = state == Qt.Checked
+        if old_junction_only != self.junction_only:
+            self.save_cache()
+        #QMessageBox.information(self, self.lang_manager.get_text("dialog_info"), 
+        #    "Junction only mode: " + str(self.junction_only))
+        #self.prev_image()
+        #self.next_image()
+
     def prev_image(self):
-        if self.current_index > 0:
-            if not self.check_unsaved_changes():
-                return
-            self.current_index -= 1
-            self.save_cache()  # 保存当前索引
-            self.load_image_and_lanes()
-            self.reset_undo_redo()
+        if self.current_index <= 0:
+            QMessageBox.warning(self, self.lang_manager.get_text("dialog_warning"), 
+                self.lang_manager.get_text("msg_no_prev_image"))
+            return
+        if self.junction_only:
+            # find the prev junction image
+            for i in range(self.current_index - 1, -1, -1):
+                if 'is_junction' not in self.annotation_data[i] or self.annotation_data[i]['is_junction']:
+                    self.current_index = i
+                    self.save_cache()  # 保存当前索引
+                    self.load_image_and_lanes()
+                    self.reset_undo_redo()
+                    return
+            QMessageBox.warning(self, self.lang_manager.get_text("dialog_warning"), 
+                self.lang_manager.get_text("msg_no_prev_image"))
+            return
+        else:
+            if self.current_index > 0:
+                if not self.check_unsaved_changes():
+                    return
+                self.current_index -= 1
+                self.save_cache()  # 保存当前索引
+                self.load_image_and_lanes()
+                self.reset_undo_redo()
 
     def next_image(self):
-        if self.current_index < len(self.annotation_data) - 1:
-            #print(f"next_image: {self.current_index}")
-            if not self.check_unsaved_changes():
-                return
-            self.current_index += 1
-            self.save_cache()  # 保存当前索引
-            self.load_image_and_lanes()
-            self.reset_undo_redo()
+        if self.current_index >= len(self.annotation_data) - 1:
+            QMessageBox.warning(self, self.lang_manager.get_text("dialog_warning"), 
+                self.lang_manager.get_text("msg_no_next_image"))
+            return
+
+        if self.junction_only:
+            # find the next junction image
+            for i in range(self.current_index + 1, len(self.annotation_data)):
+                if 'is_junction' not in self.annotation_data[i] or self.annotation_data[i]['is_junction']:
+                    self.current_index = i
+                    self.save_cache()  # 保存当前索引
+                    self.load_image_and_lanes()
+                    self.reset_undo_redo()
+                    return
+            QMessageBox.warning(self, self.lang_manager.get_text("dialog_warning"), 
+                self.lang_manager.get_text("msg_no_next_image"))
+            return
+        else:
+            if self.current_index < len(self.annotation_data) - 1:
+                #print(f"next_image: {self.current_index}")
+                if not self.check_unsaved_changes():
+                    return
+                self.current_index += 1
+                self.save_cache()  # 保存当前索引
+                self.load_image_and_lanes()
+                self.reset_undo_redo()
 
     def goto_image_by_index(self):
         text = self.goto_image_input.text()
