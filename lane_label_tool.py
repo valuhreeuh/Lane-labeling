@@ -56,10 +56,10 @@ class ConfigDialog(QDialog):
         layout = QFormLayout()
         
         # 数据集根路径配置
-        self.image_root = QLineEdit(self)
-        self.image_root.setText(config.get("image_root", "datasets/TUSimple/tusimple"))
-        self.image_root.setMinimumWidth(300)
-        layout.addRow(self.lang_manager.get_text("config_image_root"), self.image_root)
+        #self.image_root = QLineEdit(self)
+        #self.image_root.setText(config.get("image_root", "datasets/TUSimple/tusimple"))
+        #self.image_root.setMinimumWidth(300)
+        #layout.addRow(self.lang_manager.get_text("config_image_root"), self.image_root)
         
         # 项目ID配置
         self.project_id = QLineEdit(self)
@@ -100,7 +100,7 @@ class ConfigDialog(QDialog):
             max_lanes = 6
             
         return {
-            "image_root": self.image_root.text(),
+            #"image_root": self.image_root.text(),
             "project_id": self.project_id.text(),
             "max_lanes": max_lanes,
             "lang": "CN" if self.lang_combo.currentText() == "中文" else "EN"
@@ -933,7 +933,7 @@ class LaneLabelTool(QMainWindow):
         """加载配置文件"""
         config_file = "config.json"
         default_config = {
-            "image_root": "datasets/TUSimple/tusimple",
+            #"image_root": "datasets/TUSimple/tusimple",
             "project_id": "tusimple_lane",
             "max_lanes": 6,
             "lang": "CN"  # 新增默认语言设置
