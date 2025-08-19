@@ -385,9 +385,11 @@ class LaneLabelTool(QMainWindow):
         """更新进度条"""
         total_images = len(self.annotation_data)
         current_index = self.current_index
-        progress = int((current_index / total_images) * 100)
+        progress = int(((current_index+1) / total_images) * 100)
         self.progress_bar.setValue(progress)
-        self.progress_total_label.setText(f"{current_index}/{total_images}")
+        self.progress_total_label.setText(f"{current_index+1}/{total_images}")
+        self.goto_image_input.setText(str(current_index+1))
+
     def save_cache(self):
         """保存缓存信息"""
         cache = {
@@ -593,7 +595,7 @@ class LaneLabelTool(QMainWindow):
                 self.lang_manager.get_text("msg_invalid_image_index"))
             return
         idx = int(text)  # 假设用户输入1为第一张图片
-        if not hasattr(self, "annotation_data") or idx < 0 or idx >= len(self.annotation_data):
+        if not hasattr(self, "annotation_data") or idx <= 0 or idx > len(self.annotation_data):
             QMessageBox.warning(self, self.lang_manager.get_text("dialog_warning"), 
                 self.lang_manager.get_text("msg_image_index_out_of_range"))
             return
@@ -602,7 +604,7 @@ class LaneLabelTool(QMainWindow):
         if not self.check_unsaved_changes():
             return
             
-        self.current_index = idx
+        self.current_index = idx - 1
         self.save_cache()  # 保存当前索引
         self.load_image_and_lanes()
         self.reset_undo_redo()

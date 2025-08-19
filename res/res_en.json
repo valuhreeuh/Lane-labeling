@@ -58,9 +58,9 @@
     "msg_too_many_lanes": "Cannot save: Current lane count ({current}) exceeds the maximum allowed ({max})",
     "dialog_unsaved_changes": "Unsaved Changes",
     "msg_unsaved_changes": "Current lane points have unsaved changes, save?",
-    "goto_image_input": "Enter Image Index: 0 ~ N",
+    "goto_image_input": "Enter Image Index: 1 ~ N",
     "goto_image_btn": "Goto",
-    "msg_invalid_image_index": "Please enter a valid image index (number 0 ~ N)",
+    "msg_invalid_image_index": "Please enter a valid image index (number 1 ~ N)",
     "msg_image_index_out_of_range": "Image index out of range",
     "msg_no_prev_image": "No previous image",
     "msg_no_next_image": "No next image"

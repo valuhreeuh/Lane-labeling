@@ -58,9 +58,9 @@
     "msg_too_many_lanes": "无法保存：当前车道线数量（{current}）超过最大允许数量（{max}）",
     "dialog_unsaved_changes": "未保存的更改",
     "msg_unsaved_changes": "当前车道线有未保存的更改，是否保存？",
-    "goto_image_input": "输入图片编号: 0 ~ N",
+    "goto_image_input": "输入图片编号: 1 ~ N",
     "goto_image_btn": "跳转",
-    "msg_invalid_image_index": "请输入有效的图片编号（数字 0 ~ N）",
+    "msg_invalid_image_index": "请输入有效的图片编号（数字 1 ~ N）",
     "msg_image_index_out_of_range": "图片编号超出范围",
     "msg_no_prev_image": "没有上一张图片",
     "msg_no_next_image": "没有下一张图片"
