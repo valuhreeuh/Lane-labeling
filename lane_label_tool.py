@@ -283,6 +283,10 @@ class LaneLabelTool(QMainWindow):
         copy_prev_lanes_btn = QPushButton(self.lang_manager.get_text("btn_copy_prev_lanes") + "(Ctrl+P)")
         copy_prev_lanes_btn.clicked.connect(self.copy_previous_lanes)
 
+        # 新增：复制下一张车道线按钮
+        copy_next_lanes_btn = QPushButton(self.lang_manager.get_text("btn_copy_next_lanes"))
+        copy_next_lanes_btn.clicked.connect(self.copy_next_lanes)
+
         lane_list_label = QLabel(f"<b>{self.lang_manager.get_text('label_lane_list')}</b>")
         lane_list_label.setTextFormat(Qt.RichText)  # 确保使用富文本格式
         right_layout.addWidget(lane_list_label)
@@ -296,6 +300,7 @@ class LaneLabelTool(QMainWindow):
         # 新增：添加上一张/下一张按钮
         right_layout.addWidget(organize_btn)  # 新增：整理按钮
         right_layout.addWidget(show_points_btn)
+        right_layout.addWidget(copy_next_lanes_btn)  # 新增：复制下一张车道线按钮
         right_layout.addWidget(copy_prev_lanes_btn)  # 新增：复制上一张车道线按钮
         #right_layout.addLayout(progress_layout)
         right_layout.addStretch()
@@ -453,9 +458,11 @@ class LaneLabelTool(QMainWindow):
             )
             return
 
+        # 设置默认保存路径为当前打开的json文件路径
+        default_path = self.json_file_path if self.json_file_path else ""
         file_path, _ = QFileDialog.getSaveFileName(
             self, self.lang_manager.get_text("dialog_save_file"), 
-            "", "JSON Files (*.json)")
+            default_path, "JSON Files (*.json)")
         if not file_path:
             return
         
@@ -944,7 +951,7 @@ class LaneLabelTool(QMainWindow):
         if current_json.endswith(f"{project_id}_tmp.json"):
             copy_filename = current_json
         else:
-            copy_filename = f"{current_json}_{project_id}_tmp.json"
+            copy_filename = f"{current_json[:-5]}_{project_id}_tmp.json"
         copy_filepath = os.path.join(self.last_json_path, copy_filename)
 
         #print(f"_save_copy, current_index: {self.current_index}")
@@ -1022,6 +1029,66 @@ class LaneLabelTool(QMainWindow):
         # 显示气泡提示，1秒后自动消失
         QToolTip.showText(self.mapToGlobal(self.rect().center()), 
                          self.lang_manager.get_text("msg_copy_prev_success"), 
+                         self, 
+                         self.rect(), 
+                         1000)  # 1000毫秒 = 1秒
+
+    def copy_next_lanes(self):
+        """复制下一张图片的车道线数据到当前图片"""
+        if not self.annotation_data:
+            QMessageBox.warning(self, 
+                self.lang_manager.get_text("dialog_warning"),
+                self.lang_manager.get_text("msg_no_data"))
+            return
+            
+        if self.current_index >= len(self.annotation_data) - 1:
+            QMessageBox.warning(self, 
+                self.lang_manager.get_text("dialog_warning"),
+                self.lang_manager.get_text("msg_no_next_image_to_copy"))
+            return
+            
+        # 获取下一张图片的车道线数据
+        next_ann = self.annotation_data[self.current_index + 1]
+        next_lanes = next_ann.get("lanes", [])
+        
+        if not next_lanes:
+            QMessageBox.information(self, 
+                self.lang_manager.get_text("dialog_info"),
+                self.lang_manager.get_text("msg_no_next_image_to_copy"))
+            return
+            
+        # 检查是否超过最大车道线数
+        if len(next_lanes) > self.config["max_lanes"]:
+            QMessageBox.warning(self, 
+                self.lang_manager.get_text("dialog_warning"),
+                self.lang_manager.get_text("msg_too_many_lanes", 
+                    current=len(next_lanes), 
+                    max=self.config["max_lanes"]))
+            return
+            
+        # 将下一张图片的车道线数据转换为当前图片的格式
+        new_lane_points = []
+        for lane in next_lanes:
+            points = []
+            for x, y in zip(lane, self.h_samples):
+                if x >= 0:
+                    points.append((x, y))
+            new_lane_points.append(points)
+            
+        # 保存当前状态到撤销栈
+        self.push_undo()
+        
+        # 替换当前车道线数据
+        self.lane_points = new_lane_points
+        self.current_lane = 0
+        
+        # 更新界面
+        self.update_lane_list()
+        self.update_canvas()
+        
+        # 显示气泡提示，1秒后自动消失
+        QToolTip.showText(self.mapToGlobal(self.rect().center()), 
+                         self.lang_manager.get_text("msg_copy_next_success"), 
                          self, 
                          self.rect(), 
                          1000)  # 1000毫秒 = 1秒
