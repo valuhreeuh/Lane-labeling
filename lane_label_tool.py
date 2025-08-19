@@ -287,6 +287,10 @@ class LaneLabelTool(QMainWindow):
         copy_next_lanes_btn = QPushButton(self.lang_manager.get_text("btn_copy_next_lanes"))
         copy_next_lanes_btn.clicked.connect(self.copy_next_lanes)
 
+        # 新增：过滤相近车道线按钮
+        filter_close_lanes_btn = QPushButton(self.lang_manager.get_text("btn_filter_close_lanes"))
+        filter_close_lanes_btn.clicked.connect(self.filter_close_lanes)
+
         lane_list_label = QLabel(f"<b>{self.lang_manager.get_text('label_lane_list')}</b>")
         lane_list_label.setTextFormat(Qt.RichText)  # 确保使用富文本格式
         right_layout.addWidget(lane_list_label)
@@ -1094,6 +1098,59 @@ class LaneLabelTool(QMainWindow):
                          self, 
                          self.rect(), 
                          1000)  # 1000毫秒 = 1秒
+
+    def filter_close_lanes(self):
+        """过滤相近的车道线，使用lane_matching.py中的算法"""
+        if not self.lane_points or len(self.lane_points) < 2:
+            QMessageBox.information(self, 
+                self.lang_manager.get_text("dialog_info"),
+                self.lang_manager.get_text("msg_insufficient_lanes"))
+            return
+            
+        try:
+            # 导入lane_matching模块
+            from lane_matching import remove_close_lanes
+            
+            # 保存当前状态到撤销栈
+            self.push_undo()
+            
+            # 过滤相近车道线
+            original_count = len(self.lane_points)
+            self.lane_points = remove_close_lanes(self.lane_points, dist_thr=30, verbose=True)
+            filtered_count = len(self.lane_points)
+            
+            # 更新界面
+            self.current_lane = 0
+            self.update_lane_list()
+            self.update_canvas()
+            
+            # 显示结果
+            removed_count = original_count - filtered_count
+            if removed_count > 0:
+                # 显示气泡提示，1秒后自动消失
+                QToolTip.showText(self.mapToGlobal(self.rect().center()), 
+                                self.lang_manager.get_text("msg_filter_success",
+                                                        original=original_count,
+                                                        filtered=filtered_count,
+                                                        removed=removed_count), 
+                                self, 
+                                self.rect(), 
+                                1000)  # 1000毫秒 = 1秒           
+            else:
+                QToolTip.showText(self.mapToGlobal(self.rect().center()), 
+                                self.lang_manager.get_text("msg_no_close_lanes"), 
+                                self, 
+                                self.rect(), 
+                                1000)  # 1000毫秒 = 1秒                              
+                    
+        except ImportError:
+            QMessageBox.warning(self, 
+                self.lang_manager.get_text("dialog_warning"),
+                "lane_matching.py 模块未找到，无法执行过滤操作")
+        except Exception as e:
+            QMessageBox.critical(self, 
+                self.lang_manager.get_text("dialog_error"),
+                f"过滤车道线时发生错误: {str(e)}")
 
     def closeEvent(self, event):
         reply = QMessageBox.question(

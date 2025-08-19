@@ -63,5 +63,10 @@
     "msg_invalid_image_index": "Please enter a valid image index (number 1 ~ N)",
     "msg_image_index_out_of_range": "Image index out of range",
     "msg_no_prev_image": "No previous image",
-    "msg_no_next_image": "No next image"
+    "msg_no_next_image": "No next image",
+    "btn_filter_close_lanes": "Filter Close Lanes",
+    "msg_insufficient_lanes": "Insufficient lanes to perform filtering",
+    "msg_filter_success": "Filtering completed! Original lanes: {original}, Filtered: {filtered}, Removed: {removed}",
+    "msg_no_close_lanes": "No close lanes found, no filtering needed",
+    "dialog_error": "Error"
 } 
