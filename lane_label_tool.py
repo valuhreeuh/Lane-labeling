@@ -525,6 +525,11 @@ class LaneLabelTool(QMainWindow):
             QMessageBox.warning(self, self.lang_manager.get_text("dialog_warning"), 
                 self.lang_manager.get_text("msg_no_prev_image"))
             return
+        
+        # 检查是否有未保存的更改
+        if not self.check_unsaved_changes():
+            return
+            
         if self.junction_only:
             # find the prev junction image
             for i in range(self.current_index - 1, -1, -1):
@@ -539,8 +544,6 @@ class LaneLabelTool(QMainWindow):
             return
         else:
             if self.current_index > 0:
-                if not self.check_unsaved_changes():
-                    return
                 self.current_index -= 1
                 self.save_cache()  # 保存当前索引
                 self.load_image_and_lanes()
@@ -550,6 +553,10 @@ class LaneLabelTool(QMainWindow):
         if self.current_index >= len(self.annotation_data) - 1:
             QMessageBox.warning(self, self.lang_manager.get_text("dialog_warning"), 
                 self.lang_manager.get_text("msg_no_next_image"))
+            return
+
+        # 检查是否有未保存的更改
+        if not self.check_unsaved_changes():
             return
 
         if self.junction_only:
@@ -567,8 +574,6 @@ class LaneLabelTool(QMainWindow):
         else:
             if self.current_index < len(self.annotation_data) - 1:
                 #print(f"next_image: {self.current_index}")
-                if not self.check_unsaved_changes():
-                    return
                 self.current_index += 1
                 self.save_cache()  # 保存当前索引
                 self.load_image_and_lanes()
@@ -585,6 +590,11 @@ class LaneLabelTool(QMainWindow):
             QMessageBox.warning(self, self.lang_manager.get_text("dialog_warning"), 
                 self.lang_manager.get_text("msg_image_index_out_of_range"))
             return
+        
+        # 检查是否有未保存的更改
+        if not self.check_unsaved_changes():
+            return
+            
         self.current_index = idx
         self.save_cache()  # 保存当前索引
         self.load_image_and_lanes()
