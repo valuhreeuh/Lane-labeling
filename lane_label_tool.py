@@ -12,7 +12,7 @@ import numpy as np
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QFileDialog, QLabel, QPushButton, QWidget,
     QVBoxLayout, QHBoxLayout, QListWidget, QMessageBox, QInputDialog, QListWidgetItem, QCheckBox,
-    QDialog, QFormLayout, QLineEdit, QDialogButtonBox, QComboBox, QShortcut, QProgressBar  # 新增 QProgressBar
+    QDialog, QFormLayout, QLineEdit, QDialogButtonBox, QComboBox, QShortcut, QProgressBar, QToolTip  # 新增 QProgressBar, QToolTip
 )
 from PyQt5.QtGui import QPixmap, QImage, QPainter, QColor, QPen, QKeySequence
 from PyQt5.QtCore import Qt, QPoint
@@ -1019,9 +1019,12 @@ class LaneLabelTool(QMainWindow):
         self.update_lane_list()
         self.update_canvas()
         
-        QMessageBox.information(self, 
-            self.lang_manager.get_text("dialog_success"),
-            self.lang_manager.get_text("msg_copy_prev_success"))
+        # 显示气泡提示，1秒后自动消失
+        QToolTip.showText(self.mapToGlobal(self.rect().center()), 
+                         self.lang_manager.get_text("msg_copy_prev_success"), 
+                         self, 
+                         self.rect(), 
+                         1000)  # 1000毫秒 = 1秒
 
     def closeEvent(self, event):
         reply = QMessageBox.question(
