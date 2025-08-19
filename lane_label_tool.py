@@ -279,6 +279,10 @@ class LaneLabelTool(QMainWindow):
         organize_btn = QPushButton(self.lang_manager.get_text("btn_organize"))
         organize_btn.clicked.connect(self.organize_current_lane)
 
+        # 新增：复制上一张车道线按钮
+        copy_prev_lanes_btn = QPushButton(self.lang_manager.get_text("btn_copy_prev_lanes") + "(Ctrl+P)")
+        copy_prev_lanes_btn.clicked.connect(self.copy_previous_lanes)
+
         lane_list_label = QLabel(f"<b>{self.lang_manager.get_text('label_lane_list')}</b>")
         lane_list_label.setTextFormat(Qt.RichText)  # 确保使用富文本格式
         right_layout.addWidget(lane_list_label)
@@ -292,6 +296,7 @@ class LaneLabelTool(QMainWindow):
         # 新增：添加上一张/下一张按钮
         right_layout.addWidget(organize_btn)  # 新增：整理按钮
         right_layout.addWidget(show_points_btn)
+        right_layout.addWidget(copy_prev_lanes_btn)  # 新增：复制上一张车道线按钮
         #right_layout.addLayout(progress_layout)
         right_layout.addStretch()
         # 新增：上一张/下一张按钮同一行
@@ -348,6 +353,9 @@ class LaneLabelTool(QMainWindow):
         redo_shortcut.activated.connect(self.redo)
         save_copy_shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
         save_copy_shortcut.activated.connect(self.save_copy2)
+        # 复制上一张车道线快捷键
+        copy_prev_shortcut = QShortcut(QKeySequence("Ctrl+P"), self)
+        copy_prev_shortcut.activated.connect(self.copy_previous_lanes)
 
 
     def load_cache(self):
@@ -947,6 +955,63 @@ class LaneLabelTool(QMainWindow):
 
         #self.save_cache()
         return copy_filepath
+
+    def copy_previous_lanes(self):
+        """复制上一张图片的车道线数据到当前图片"""
+        if not self.annotation_data:
+            QMessageBox.warning(self, 
+                self.lang_manager.get_text("dialog_warning"),
+                self.lang_manager.get_text("msg_no_data"))
+            return
+            
+        if self.current_index <= 0:
+            QMessageBox.warning(self, 
+                self.lang_manager.get_text("dialog_warning"),
+                self.lang_manager.get_text("msg_no_prev_image"))
+            return
+            
+        # 获取上一张图片的车道线数据
+        prev_ann = self.annotation_data[self.current_index - 1]
+        prev_lanes = prev_ann.get("lanes", [])
+        
+        if not prev_lanes:
+            QMessageBox.information(self, 
+                self.lang_manager.get_text("dialog_info"),
+                self.lang_manager.get_text("msg_no_prev_image"))
+            return
+            
+        # 检查是否超过最大车道线数
+        if len(prev_lanes) > self.config["max_lanes"]:
+            QMessageBox.warning(self, 
+                self.lang_manager.get_text("dialog_warning"),
+                self.lang_manager.get_text("msg_too_many_lanes", 
+                    current=len(prev_lanes), 
+                    max=self.config["max_lanes"]))
+            return
+            
+        # 将上一张图片的车道线数据转换为当前图片的格式
+        new_lane_points = []
+        for lane in prev_lanes:
+            points = []
+            for x, y in zip(lane, self.h_samples):
+                if x >= 0:
+                    points.append((x, y))
+            new_lane_points.append(points)
+            
+        # 保存当前状态到撤销栈
+        self.push_undo()
+        
+        # 替换当前车道线数据
+        self.lane_points = new_lane_points
+        self.current_lane = 0
+        
+        # 更新界面
+        self.update_lane_list()
+        self.update_canvas()
+        
+        QMessageBox.information(self, 
+            self.lang_manager.get_text("dialog_success"),
+            self.lang_manager.get_text("msg_copy_prev_success"))
 
     def closeEvent(self, event):
         reply = QMessageBox.question(
