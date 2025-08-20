@@ -78,6 +78,11 @@ class ConfigDialog(QDialog):
         self.lang_combo.setCurrentText("中文" if current_lang == "CN" else "English")
         layout.addRow(self.lang_manager.get_text("config_lang"), self.lang_combo)
         
+        # 新增：自动过滤相近车道线复选框
+        self.auto_filter_checkbox = QCheckBox(self)
+        self.auto_filter_checkbox.setChecked(config.get("auto_filter_close_lanes", False))
+        layout.addRow(self.lang_manager.get_text("config_auto_filter"), self.auto_filter_checkbox)
+        
         # 添加确定和取消按钮
         button_box = QDialogButtonBox(
             QDialogButtonBox.Ok | QDialogButtonBox.Cancel,
@@ -103,7 +108,8 @@ class ConfigDialog(QDialog):
             #"image_root": self.image_root.text(),
             "project_id": self.project_id.text(),
             "max_lanes": max_lanes,
-            "lang": "CN" if self.lang_combo.currentText() == "中文" else "EN"
+            "lang": "CN" if self.lang_combo.currentText() == "中文" else "EN",
+            "auto_filter_close_lanes": self.auto_filter_checkbox.isChecked()
         }
 
 class LanguageManager:
@@ -304,6 +310,7 @@ class LaneLabelTool(QMainWindow):
         # 新增：添加上一张/下一张按钮
         right_layout.addWidget(organize_btn)  # 新增：整理按钮
         right_layout.addWidget(show_points_btn)
+        right_layout.addWidget(filter_close_lanes_btn)  # 新增：过滤相近车道线按钮
         right_layout.addWidget(copy_next_lanes_btn)  # 新增：复制下一张车道线按钮
         right_layout.addWidget(copy_prev_lanes_btn)  # 新增：复制上一张车道线按钮
         #right_layout.addLayout(progress_layout)
@@ -644,6 +651,24 @@ class LaneLabelTool(QMainWindow):
         """
         if not self.annotation_data:
             return
+            
+        # 如果启用了自动过滤相近车道线，则在保存前自动过滤
+        if self.config.get("auto_filter_close_lanes", False) and len(self.lane_points) > 1:
+            try:
+                from lane_matching import remove_close_lanes
+                original_count = len(self.lane_points)
+                self.lane_points = remove_close_lanes(self.lane_points, dist_thr=30, verbose=False)
+                filtered_count = len(self.lane_points)
+                if original_count != filtered_count:
+                    logging.info(f"自动过滤相近车道线：原始{original_count}条，过滤后{filtered_count}条")
+                    # 更新界面
+                    self.update_lane_list()
+                    self.update_canvas()
+            except ImportError:
+                logging.warning("lane_matching.py 模块未找到，跳过自动过滤")
+            except Exception as e:
+                logging.error(f"自动过滤相近车道线时发生错误: {e}")
+        
         # 只保存x坐标，y坐标由h_samples决定
         lanes = []
         for lane in self.lane_points:
@@ -1195,7 +1220,8 @@ class LaneLabelTool(QMainWindow):
             #"image_root": "datasets/TUSimple/tusimple",
             "project_id": "tusimple_lane",
             "max_lanes": 6,
-            "lang": "CN"  # 新增默认语言设置
+            "lang": "CN",  # 新增默认语言设置
+            "auto_filter_close_lanes": False  # 新增：默认不自动过滤相近车道线
         }
         
         if os.path.exists(config_file):

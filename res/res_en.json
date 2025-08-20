@@ -68,5 +68,6 @@
     "msg_insufficient_lanes": "Insufficient lanes to perform filtering",
     "msg_filter_success": "Filtering completed! Original lanes: {original}, Filtered: {filtered}, Removed: {removed}",
     "msg_no_close_lanes": "No close lanes found, no filtering needed",
-    "dialog_error": "Error"
+    "dialog_error": "Error",
+    "config_auto_filter": "Auto Filter Close Lanes"
 } 

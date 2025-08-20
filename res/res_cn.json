@@ -68,5 +68,6 @@
     "msg_insufficient_lanes": "车道线数量不足，无法执行过滤操作",
     "msg_filter_success": "过滤完成！原始车道线：{original}条，过滤后：{filtered}条，移除：{removed}条",
     "msg_no_close_lanes": "未发现相近的车道线，无需过滤",
-    "dialog_error": "错误"
+    "dialog_error": "错误",
+    "config_auto_filter": "自动过滤相近车道线"
 } 
