@@ -32,7 +32,6 @@
     "msg_lanes_limited": "Number of lanes has been limited to {max_lanes}",
     "msg_copy_prev_success": "Previous image lane data copied successfully",
     "msg_copy_next_success": "Next image lane data copied successfully",
-    "msg_no_prev_image": "No previous image to copy from",
     "msg_no_next_image_to_copy": "No next image to copy from",
     "config_title": "Configuration",
     "config_image_root": "Image Root Path:",
@@ -69,5 +68,6 @@
     "msg_filter_success": "Filtering completed! Original lanes: {original}, Filtered: {filtered}, Removed: {removed}",
     "msg_no_close_lanes": "No close lanes found, no filtering needed",
     "dialog_error": "Error",
-    "config_auto_filter": "Auto Filter Close Lanes"
-} 
+    "config_auto_filter": "Auto Filter Close Lanes",
+    "config_image_scale": "Image Scale:"
+}

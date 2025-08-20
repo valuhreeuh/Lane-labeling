@@ -83,6 +83,18 @@ class ConfigDialog(QDialog):
         self.auto_filter_checkbox.setChecked(config.get("auto_filter_close_lanes", False))
         layout.addRow(self.lang_manager.get_text("config_auto_filter"), self.auto_filter_checkbox)
         
+        # 新增：图像放大倍数下拉框
+        self.image_scale_combo = QComboBox(self)
+        self.image_scale_combo.addItems(["*1", "*1.5", "*2"])
+        current_scale = config.get("image_scale", 1.0)
+        if current_scale == 1.0:
+            self.image_scale_combo.setCurrentText("*1")
+        elif current_scale == 1.5:
+            self.image_scale_combo.setCurrentText("*1.5")
+        elif current_scale == 2.0:
+            self.image_scale_combo.setCurrentText("*2")
+        layout.addRow(self.lang_manager.get_text("config_image_scale"), self.image_scale_combo)
+        
         # 添加确定和取消按钮
         button_box = QDialogButtonBox(
             QDialogButtonBox.Ok | QDialogButtonBox.Cancel,
@@ -104,12 +116,24 @@ class ConfigDialog(QDialog):
         except ValueError:
             max_lanes = 6
             
+        # 解析图像放大倍数
+        scale_text = self.image_scale_combo.currentText()
+        if scale_text == "*1":
+            image_scale = 1.0
+        elif scale_text == "*1.5":
+            image_scale = 1.5
+        elif scale_text == "*2":
+            image_scale = 2.0
+        else:
+            image_scale = 1.0
+            
         return {
             #"image_root": self.image_root.text(),
             "project_id": self.project_id.text(),
             "max_lanes": max_lanes,
             "lang": "CN" if self.lang_combo.currentText() == "中文" else "EN",
-            "auto_filter_close_lanes": self.auto_filter_checkbox.isChecked()
+            "auto_filter_close_lanes": self.auto_filter_checkbox.isChecked(),
+            "image_scale": image_scale
         }
 
 class LanguageManager:
@@ -189,6 +213,12 @@ class LaneLabelTool(QMainWindow):
             self.progress_bar.setValue(0)
             self.progress_total_label = QLabel("0")  # 默认显示0
             self.junction_only = self.cache.get("junction_only", True)
+            
+            # 新增：图像缩放相关变量
+            self.image_scale = self.config.get("image_scale", 1.0)
+            self.scaled_canvas_size = (int(TUSIMPLE_IMG_SIZE[0] * self.image_scale), 
+                                     int(TUSIMPLE_IMG_SIZE[1] * self.image_scale))
+            
             self.init_ui()
 
             # 自动根据cache内容加载标注文件和图像
@@ -343,7 +373,7 @@ class LaneLabelTool(QMainWindow):
 
         main_layout = QHBoxLayout()
         self.canvas = QLabel()
-        self.canvas.setFixedSize(TUSIMPLE_IMG_SIZE[0], TUSIMPLE_IMG_SIZE[1])
+        self.canvas.setFixedSize(self.scaled_canvas_size[0], self.scaled_canvas_size[1])
         self.canvas.setMouseTracking(True)
         self.canvas.mousePressEvent = self.on_canvas_click
         main_layout.addWidget(self.canvas)
@@ -797,8 +827,9 @@ class LaneLabelTool(QMainWindow):
 
     def on_canvas_click(self, event):
         if event.button() == Qt.LeftButton and self.current_lane < len(self.lane_points):
-            x = int(event.pos().x())
-            y = int(event.pos().y())
+            # 将缩放后的坐标转换回原始坐标
+            x = int(event.pos().x() / self.image_scale)
+            y = int(event.pos().y() / self.image_scale)
             self.push_undo()
             self.lane_points[self.current_lane].append((x, y))
             # sort points by y
@@ -810,8 +841,20 @@ class LaneLabelTool(QMainWindow):
         if self.image is None:
             return
         img = self.image.copy()
+        
+        # 如果图像需要缩放，先进行缩放
+        if self.image_scale != 1.0:
+            scaled_width = int(TUSIMPLE_IMG_SIZE[0] * self.image_scale)
+            scaled_height = int(TUSIMPLE_IMG_SIZE[1] * self.image_scale)
+            img = cv2.resize(img, (scaled_width, scaled_height), interpolation=cv2.INTER_LINEAR)
+        
         painter = QPainter()
-        qimg = QImage(img.data, TUSIMPLE_IMG_SIZE[0], TUSIMPLE_IMG_SIZE[1], img.strides[0], QImage.Format_RGB888)
+        if self.image_scale == 1.0:
+            qimg = QImage(img.data, TUSIMPLE_IMG_SIZE[0], TUSIMPLE_IMG_SIZE[1], img.strides[0], QImage.Format_RGB888)
+        else:
+            scaled_width = int(TUSIMPLE_IMG_SIZE[0] * self.image_scale)
+            scaled_height = int(TUSIMPLE_IMG_SIZE[1] * self.image_scale)
+            qimg = QImage(img.data, scaled_width, scaled_height, img.strides[0], QImage.Format_RGB888)
         pixmap = QPixmap.fromImage(qimg)
         painter.begin(pixmap)
 
@@ -821,10 +864,10 @@ class LaneLabelTool(QMainWindow):
             painter.setPen(pen)
             for i in range(len(self.h_samples)):
                 if (i % 4 == 0) or (i == len(self.h_samples) - 1):
-                    y = self.h_samples[i]
-                    painter.drawLine(0, y, 1280, y)
+                    y = int(self.h_samples[i] * self.image_scale)
+                    painter.drawLine(0, y, self.scaled_canvas_size[0], y)
                     painter.setPen(QColor(80, 80, 80))
-                    painter.drawText(5, y - 2, f"{y}")
+                    painter.drawText(5, y - 2, f"{int(self.h_samples[i])}")
                     painter.setPen(pen)
 
         # 画车道线
@@ -839,10 +882,15 @@ class LaneLabelTool(QMainWindow):
             pen = QPen(color, 3)
             painter.setPen(pen)
             for i in range(1, len(lane)):
-                painter.drawLine(QPoint(*lane[i-1]), QPoint(*lane[i]))
+                # 缩放坐标
+                pt1 = (int(lane[i-1][0] * self.image_scale), int(lane[i-1][1] * self.image_scale))
+                pt2 = (int(lane[i][0] * self.image_scale), int(lane[i][1] * self.image_scale))
+                painter.drawLine(QPoint(*pt1), QPoint(*pt2))
             for pt in lane:
                 painter.setBrush(color)
-                painter.drawEllipse(QPoint(*pt), 2, 2)  # 修改：直径为3（半径为1）
+                # 缩放坐标
+                scaled_pt = (int(pt[0] * self.image_scale), int(pt[1] * self.image_scale))
+                painter.drawEllipse(QPoint(*scaled_pt), 2, 2)  # 修改：直径为3（半径为1）
         painter.end()
         self.canvas.setPixmap(pixmap)
 
@@ -1196,9 +1244,18 @@ class LaneLabelTool(QMainWindow):
         
         if dialog.exec_() == QDialog.Accepted:
             old_lang = self.config.get("lang", "CN")
+            old_scale = self.config.get("image_scale", 1.0)
             new_config = dialog.get_config()
             self.config.update(new_config)
             self.save_config()
+            
+            # 如果图像缩放倍数发生变化，重新调整窗口和画布
+            if old_scale != new_config["image_scale"]:
+                self.image_scale = new_config["image_scale"]
+                self.scaled_canvas_size = (int(TUSIMPLE_IMG_SIZE[0] * self.image_scale), 
+                                         int(TUSIMPLE_IMG_SIZE[1] * self.image_scale))
+                self.canvas.setFixedSize(self.scaled_canvas_size[0], self.scaled_canvas_size[1])
+                self.update_canvas()
             
             if old_lang != new_config["lang"]:
                 QMessageBox.information(self, 
@@ -1221,7 +1278,8 @@ class LaneLabelTool(QMainWindow):
             "project_id": "tusimple_lane",
             "max_lanes": 6,
             "lang": "CN",  # 新增默认语言设置
-            "auto_filter_close_lanes": False  # 新增：默认不自动过滤相近车道线
+            "auto_filter_close_lanes": False,  # 新增：默认不自动过滤相近车道线
+            "image_scale": 1.0  # 新增：默认图像缩放倍数
         }
         
         if os.path.exists(config_file):
